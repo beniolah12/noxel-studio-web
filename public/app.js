@@ -126,7 +126,42 @@ function renderScript() {
   cur.blocks.forEach(b => scriptEl.appendChild(makeBlock(b)));
   syncStats();
   renderScenes();
+  updateWelcome();
   if (typeof renderScriptPeers === "function") renderScriptPeers();
+}
+
+/* welcome / empty state -------------------------------------------------- */
+function scriptIsEmpty() {
+  return cur.blocks.length <= 1 && !(cur.blocks[0] && cur.blocks[0].text.trim());
+}
+function updateWelcome() {
+  const w = $("#welcome");
+  if (!w) return;
+  if (!scriptIsEmpty()) { w.hidden = true; return; }
+  w.hidden = false;
+  w.innerHTML =
+    '<h3>Write your first scene ✍️</h3>' +
+    '<p>Click the page below and type a <b>scene heading</b> — where and when the scene happens, like <span class="eg">INT. Coffee shop - Day</span>. ' +
+    'Then press <b>Enter</b> and keep going: describe what happens, add a <b>character</b> name, their <b>dialogue</b>. ' +
+    'The buttons at the top (or the <b>Tab</b> key) switch between line types. Everything saves automatically.</p>' +
+    '<div class="row">' +
+    '<button id="wStart">Start with a blank page</button>' +
+    '<button class="ghost" id="wSample">Load a short example</button>' +
+    '</div>';
+  $("#wStart").onclick = () => {
+    w.hidden = true;
+    const n = blockNodes()[0];
+    if (n) placeCaret(n, false);
+  };
+  $("#wSample").onclick = () => {
+    const s = sample();
+    cur.blocks = s.blocks.map(b => ({ id: uid(), type: b.type, text: b.text }));
+    if (!cur.title || cur.title === "UNTITLED") { cur.title = s.title; renderTitle(); refreshProjSelect(); }
+    renderScript();
+    save(true);
+    const n = blockNodes()[0];
+    if (n) placeCaret(n, true);
+  };
 }
 
 function blockNodes() { return [...scriptEl.children]; }
@@ -143,6 +178,7 @@ function setType(node, type) {
   if (UPPER[type]) node.textContent = node.textContent.toUpperCase();
   toggleEmpty(node);
   flashTag(type);
+  if (typeof updateFmtbar === "function") updateFmtbar(type);
   save();
   syncStats();
   renderScenes();
@@ -257,7 +293,7 @@ scriptEl.addEventListener("keydown", e => {
 scriptEl.addEventListener("focusin", e => {
   const node = e.target.closest(".block");
   if (node) {
-    flashTag(node.dataset.type); markActiveScene(node);
+    flashTag(node.dataset.type); markActiveScene(node); updateFmtbar(node.dataset.type);
     const i = indexOf(node);
     let sc = null;
     for (let k = i; k >= 0; k--) if (cur.blocks[k] && cur.blocks[k].type === "scene") { sc = cur.blocks[k].text; break; }
@@ -271,6 +307,41 @@ scriptEl.addEventListener("paste", e => {
   const text = (e.clipboardData || window.clipboardData).getData("text/plain");
   document.execCommand("insertText", false, text.replace(/\r/g, ""));
 });
+
+/* ---------------- formatting toolbar ---------------- */
+function activeBlock() {
+  const a = document.activeElement;
+  return a && a.closest ? a.closest(".block") : null;
+}
+function updateFmtbar(type) {
+  [...$("#fmtBtns").children].forEach(b => b.classList.toggle("on", b.dataset.t === type));
+}
+$("#fmtBtns").addEventListener("click", e => {
+  const btn = e.target.closest(".fmt-btn");
+  if (!btn) return;
+  const node = activeBlock() || blockNodes()[blockNodes().length - 1];
+  if (!node) return;
+  setType(node, btn.dataset.t);
+  placeCaret(node, true);
+});
+
+/* ---------------- text-size zoom ---------------- */
+function setZoom(px) {
+  px = Math.max(12, Math.min(24, px));
+  document.documentElement.style.setProperty("--script-size", px + "px");
+  try { localStorage.setItem("noxel.zoom", px); } catch (e) {}
+  try { renderScriptPeers(); } catch (e) {}
+}
+(function initZoom() {
+  let z = 15;
+  try { z = parseInt(localStorage.getItem("noxel.zoom"), 10) || 15; } catch (e) {}
+  setZoom(z);
+})();
+function curZoom() {
+  return parseInt(getComputedStyle(document.documentElement).getPropertyValue("--script-size"), 10) || 15;
+}
+$("#zoomIn").addEventListener("click", () => setZoom(curZoom() + 1));
+$("#zoomOut").addEventListener("click", () => setZoom(curZoom() - 1));
 
 /* ---------------- element tag pill ---------------- */
 let tagTimer = null;
@@ -483,7 +554,39 @@ $("#themeBtn").addEventListener("click", () => {
   try { localStorage.setItem("noxel.theme", next); } catch (e) {}
 });
 
+$("#helpBtn").addEventListener("click", () => {
+  const m = $("#modal");
+  m.classList.add("wide");
+  m.innerHTML = `
+    <h3>How Noxel Studio works</h3>
+    <div class="cm-body" id="helpBody" style="font-family:var(--ui);font-size:14.5px;line-height:1.65;color:var(--ink)">
+      <p style="margin:.2em 0 1em;color:var(--muted)">A screenwriting and film-planning tool. Free, no account. Everything you type saves by itself.</p>
+
+      <p><b>✍️ Write</b> — the screenplay itself. Each line has a <i>type</i>:</p>
+      <ul style="margin:.3em 0 1em">
+        <li><b>Scene heading</b> — where &amp; when: <code>INT. KITCHEN - NIGHT</code></li>
+        <li><b>Action</b> — what we see happen</li>
+        <li><b>Character</b> — who speaks (their name)</li>
+        <li><b>Dialogue</b> — what they say</li>
+        <li><b>Parenthetical</b> — a short <code>(beat)</code> or tone note</li>
+        <li><b>Transition</b> — <code>CUT TO:</code></li>
+      </ul>
+      <p>Change the current line's type with the <b>buttons at the top</b> or the <b>Tab</b> key. <b>Enter</b> starts the next line and picks a sensible type for you. Names you've used before auto-complete.</p>
+
+      <p style="margin-top:1.2em"><b>📋 Breakdown</b> — for each scene, tag what it needs: cast, props, wardrobe, vehicles, effects… “Auto-scan” fills in the obvious ones from your script.</p>
+      <p><b>🎬 Shots</b> — plan each camera shot (size, movement, lens) and attach a storyboard frame.</p>
+      <p><b>📅 Schedule</b> — drag scenes onto shooting days (coloured by INT/EXT + day/night), then print a call sheet.</p>
+      <p><b>💰 Budget</b> — list costs by category, see the running total, export to a spreadsheet.</p>
+
+      <p style="margin-top:1.2em"><b>Sharing</b> — the <b>Share</b> button copies a link. Anyone you send it to opens the same script and edits it with you, live. <b>Export PDF</b> makes a proper industry-formatted script (or report, in the other tabs). <b>Backup &amp; formats</b> imports/exports Fountain and JSON.</p>
+    </div>
+    <div class="row"><button class="tbtn primary" id="helpClose">Got it</button></div>`;
+  $("#helpClose").onclick = closeModal;
+  scrim.classList.add("open");
+});
+
 $("#titleBtn").addEventListener("click", () => {
+  $("#modal").classList.remove("wide");
   $("#modal").innerHTML = `
     <h3>Title Page</h3>
     <label>Title</label><input type="text" id="mTitle">
@@ -1635,7 +1738,7 @@ function setMode(mode) {
   else if (mode === "shots") renderShots();
   else if (mode === "schedule") renderSchedule();
   else if (mode === "budget") renderBudget();
-  else syncStats();
+  else { syncStats(); updateWelcome(); const ab = blockNodes()[0]; updateFmtbar(ab ? ab.dataset.type : "scene"); }
   renderScriptPeers();
   $("#main").scrollTop = 0;
   pushPresence();
