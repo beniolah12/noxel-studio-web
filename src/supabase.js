@@ -3,12 +3,28 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-const url = import.meta.env.VITE_SUPABASE_URL;
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-if (!url || !key) console.warn("Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY");
+const url = import.meta.env.VITE_SUPABASE_URL || "https://rdtvejebscvggfoqwjqx.supabase.co";
+const key = import.meta.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_GEs52kcMUf4F5Tvq-xz84g_RkW3mEkP";
+const SB_HOST = new URL(url).host;
 
-export const supabase = createClient(url || "http://localhost", key || "anon", {
-  auth: { persistSession: false }
+// Route every REST/Auth call through our own /api/db proxy (same origin), so
+// DNS filters, ad-blockers and corporate proxies can't stop it. WebSocket
+// (realtime) still connects directly and simply stays quiet if blocked.
+function proxyFetch(input, init) {
+  let u = typeof input === "string" ? input : (input && input.url) || "";
+  const cut = u.indexOf(SB_HOST);
+  if (cut >= 0) {
+    const path = u.slice(cut + SB_HOST.length);           // "/rest/v1/projects?..."
+    if (path.startsWith("/rest/") || path.startsWith("/auth/")) {
+      return fetch("/api/db?p=" + encodeURIComponent(path), init);
+    }
+  }
+  return fetch(input, init);
+}
+
+export const supabase = createClient(url, key, {
+  auth: { persistSession: false },
+  global: { fetch: proxyFetch }
 });
 
 // A per-browser tag so we can ignore the echo of our own writes.
@@ -28,37 +44,15 @@ export async function loadProject(id) {
 }
 
 // Preflight the connection so the UI can show a specific message.
-// Returns one of: "ok" | "no_table"
-//   | "blocked:<detail>"  (network/CORS/extension — the browser couldn't complete the request)
-//   | "db:<detail>"       (reached the database, but it complained)
+// Returns: "ok" | "no_table" | "blocked:<detail>" | "db:<detail>"
 export async function preflight() {
-  const url = import.meta.env.VITE_SUPABASE_URL;
-  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-  // 1. Can we even reach the REST endpoint with a raw fetch?
-  let rawStatus = 0, rawErr = "";
-  try {
-    const r = await fetch(url + "/rest/v1/projects?select=id&limit=1", { headers: { apikey: key, Authorization: "Bearer " + key } });
-    rawStatus = r.status;
-    if (r.status === 200) {
-      const body = await r.json().catch(() => null);
-      if (Array.isArray(body)) return "ok";
-    }
-    const txt = await r.text().catch(() => "");
-    if (/does not exist|could not find the table|schema cache/i.test(txt)) return "no_table";
-    if (r.status === 401 || /invalid.*key|api key/i.test(txt)) return "db:API key rejected (status " + r.status + "). The VITE_SUPABASE_ANON_KEY may be wrong.";
-    rawErr = "HTTP " + r.status + " " + txt.slice(0, 140);
-  } catch (e) {
-    return "blocked:" + (e && e.message ? e.message : "fetch failed") + " — a browser extension, VPN, proxy, or DNS filter is stopping the request to " + new URL(url).host + ".";
-  }
-
-  // 2. Raw fetch got through but not a clean 200 — fall back to the SDK for its error text
   try {
     const { error } = await supabase.from("projects").select("id").limit(1);
     if (!error) return "ok";
     const m = String(error.message || "");
     if (/does not exist|could not find the table|schema cache/i.test(m)) return "no_table";
-    return "db:" + m + (rawErr ? "  (" + rawErr + ")" : "");
+    if (/failed to fetch|load failed|networkerror|502|upstream/i.test(m)) return "blocked:" + m;
+    return "db:" + m;
   } catch (e) {
     return "blocked:" + (e && e.message ? e.message : "request failed");
   }
