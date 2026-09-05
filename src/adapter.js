@@ -19,7 +19,22 @@ function blank() {
     breakdown: null, shots: {}, days: [], dayOf: {}, callsheets: {}, budget: [], stripOrder: {}, _comments: [] };
 }
 
-let api = null, comments = [], lastJson = "", saveT = null, pres = null, saving = false, settled = false, pendingLocal = false, lastPeers = [];
+let api = null, comments = [], lastSig = "", saveT = null, pres = null, saving = false, settled = false, pendingLocal = false, lastPeers = [];
+
+// Postgres jsonb does NOT preserve key order, so a plain JSON.stringify of a
+// row we just wrote won't match what we sent — compare a canonical form, and
+// stamp our own writes so their realtime echo is unmistakably ours.
+function canon(v) {
+  if (v === null || typeof v !== "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return "[" + v.map(canon).join(",") + "]";
+  return "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + canon(v[k])).join(",") + "}";
+}
+function sig(projData) {
+  const c = Object.assign({}, projData);
+  delete c._w;
+  c._comments = Array.isArray(c._comments) ? c._comments : [];
+  return canon(c);
+}
 
 const COLORS = ["#e0714f", "#4f9de0", "#63b463", "#c98bdb", "#d8a13a", "#3ec7c0"];
 const myColor = COLORS[Math.floor(Math.random() * COLORS.length)];
@@ -50,11 +65,11 @@ function scheduleSave() {
     if (!api) return;
     const d = api.currentLibrary();
     const proj = Object.assign({}, d.projects[0], { _comments: comments });
-    const j = JSON.stringify(proj);
-    if (j === lastJson) { pendingLocal = false; cloud("Synced"); return; }
-    lastJson = j;
+    const s = sig(proj);
+    if (s === lastSig) { pendingLocal = false; cloud("Synced"); return; }   // nothing really changed
+    lastSig = s;
+    proj._w = tabPeerId + ":" + Date.now();                                 // mark it as ours
     saving = true;
-    // only surface "Saving…" if the write is actually slow — otherwise it just flickers
     clearTimeout(slowT);
     slowT = setTimeout(() => { if (saving) cloud("Saving…", "saving"); }, 500);
     try {
@@ -128,7 +143,7 @@ window.NoxelHost = {
     // that could clobber a collaborator mid-edit.
     try {
       const d = a.currentLibrary();
-      lastJson = JSON.stringify(Object.assign({}, d.projects[0], { _comments: comments }));
+      lastSig = sig(Object.assign({}, d.projects[0], { _comments: comments }));
     } catch (e) {}
     pendingLocal = false;
     settled = true;
@@ -188,16 +203,18 @@ function fatal(title, html) {
   remember(pid, row.data.title || row.title);
   comments = Array.isArray(row.data._comments) ? row.data._comments : [];
   window.NoxelHost.initialLibrary = { projects: [row.data], currentId: row.data.id };
-  lastJson = JSON.stringify(Object.assign({}, row.data, { _comments: comments }));
+  lastSig = sig(row.data);
 
   subscribeProject(pid, (fresh) => {
+    if (!fresh || !fresh.data) return;
+    if (typeof fresh.data._w === "string" && fresh.data._w.startsWith(tabPeerId + ":")) return;  // our own echo
     if (saving || pendingLocal) return;            // don't clobber unsaved local edits
     const activelyEditing = document.activeElement &&
       (document.activeElement.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName));
     if (activelyEditing) return;
-    const j = JSON.stringify(Object.assign({}, fresh.data, { _comments: fresh.data._comments || [] }));
-    if (j === lastJson) return;
-    lastJson = j;
+    const s = sig(fresh.data);
+    if (s === lastSig) return;                      // identical content, ignore
+    lastSig = s;
     comments = Array.isArray(fresh.data._comments) ? fresh.data._comments : comments;
     if (api) {
       const mode = document.body.dataset.mode;
