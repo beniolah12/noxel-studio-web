@@ -1593,6 +1593,7 @@ window.__noxel = {
 if (HOST) {
   document.getElementById("cloudPill").hidden = true;
   document.getElementById("newBtn").hidden = true;
+  document.getElementById("projSelect").hidden = true;
 }
 
 boot();
