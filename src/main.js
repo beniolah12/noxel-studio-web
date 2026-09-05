@@ -4,6 +4,7 @@
 
 import {
   currentUser, onAuthChange, signInWithEmail, signOut,
+  signUpWithPassword, signInWithPassword, signInWithGitHub,
   listProjects, createProject, deleteProject,
   shareProject, listCollaborators
 } from "./supabase.js";
@@ -68,22 +69,58 @@ async function render(user) {
 function renderSignIn() {
   who.textContent = "";
   signoutBtn.hidden = true;
+  const next = new URLSearchParams(location.search).get("next");
+  const redirect = next && next.startsWith("/") ? location.origin + next : location.origin;
+
   app.innerHTML = `
     <h1>Sign in</h1>
-    <p class="muted">We'll email you a magic link — no password.</p>
-    <form id="f" style="display:flex;gap:8px;margin-top:12px">
-      <input id="email" type="email" placeholder="you@example.com" required style="flex:1" />
-      <button class="primary">Send link</button>
+    <form id="f" style="display:flex;flex-direction:column;gap:8px;margin-top:12px;max-width:340px">
+      <input id="email" type="email" placeholder="you@example.com" autocomplete="email" required />
+      <input id="pw" type="password" placeholder="password (min 6 chars)" autocomplete="current-password" minlength="6" required />
+      <div style="display:flex;gap:8px">
+        <button class="primary" id="in" style="flex:1">Sign in</button>
+        <button id="up" style="flex:1">Create account</button>
+      </div>
     </form>
+    <button id="gh" style="margin-top:8px">Continue with GitHub</button>
+    <details style="margin-top:14px"><summary class="muted" style="cursor:pointer">Prefer a magic link?</summary>
+      <div style="display:flex;gap:8px;margin-top:8px;max-width:340px">
+        <input id="mlemail" type="email" placeholder="you@example.com" style="flex:1" />
+        <button id="ml">Email me a link</button>
+      </div>
+    </details>
     <p id="msg" class="muted"></p>
   `;
-  document.getElementById("f").onsubmit = async (e) => {
+  const msg = document.getElementById("msg");
+  const email = () => document.getElementById("email").value.trim();
+  const pw = () => document.getElementById("pw").value;
+
+  document.getElementById("in").onclick = async (e) => {
     e.preventDefault();
-    const email = document.getElementById("email").value.trim();
-    const next = new URLSearchParams(location.search).get("next");
-    const redirect = next && next.startsWith("/") ? location.origin + next : location.origin;
-    const { error } = await signInWithEmail(email, redirect);
-    document.getElementById("msg").textContent = error ? error.message : "Check your inbox for the sign-in link.";
+    if (!email() || pw().length < 6) { msg.textContent = "Enter your email and password."; return; }
+    const { error } = await signInWithPassword(email(), pw());
+    msg.textContent = error ? error.message : "Signing in…";
+  };
+  document.getElementById("up").onclick = async (e) => {
+    e.preventDefault();
+    if (!email() || pw().length < 6) { msg.textContent = "Pick a password of at least 6 characters."; return; }
+    const { data, error } = await signUpWithPassword(email(), pw(), redirect);
+    if (error) { msg.textContent = error.message; return; }
+    msg.textContent = data.session
+      ? "Account created — signing in…"
+      : "Account created. If email confirmation is on, check your inbox; otherwise just Sign in.";
+  };
+  document.getElementById("gh").onclick = async (e) => {
+    e.preventDefault();
+    const { error } = await signInWithGitHub(redirect);
+    if (error) msg.textContent = error.message;
+  };
+  document.getElementById("ml").onclick = async (e) => {
+    e.preventDefault();
+    const em = document.getElementById("mlemail").value.trim() || email();
+    if (!em) { msg.textContent = "Enter your email first."; return; }
+    const { error } = await signInWithEmail(em, redirect);
+    msg.textContent = error ? error.message : "Check your inbox (and spam) for the sign-in link.";
   };
 }
 

@@ -23,6 +23,21 @@ export async function signInWithEmail(email, redirectTo) {
     options: { emailRedirectTo: redirectTo || window.location.origin }
   });
 }
+export async function signUpWithPassword(email, password, redirectTo) {
+  return supabase.auth.signUp({
+    email, password,
+    options: { emailRedirectTo: redirectTo || window.location.origin }
+  });
+}
+export async function signInWithPassword(email, password) {
+  return supabase.auth.signInWithPassword({ email, password });
+}
+export async function signInWithGitHub(redirectTo) {
+  return supabase.auth.signInWithOAuth({
+    provider: "github",
+    options: { redirectTo: redirectTo || window.location.origin }
+  });
+}
 export async function signOut() { return supabase.auth.signOut(); }
 export async function currentUser() {
   const { data } = await supabase.auth.getUser();
