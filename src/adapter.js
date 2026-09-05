@@ -33,7 +33,10 @@ function setMyName(n) {
   if (pres) pres.update({ name: myName });
 }
 
+let cloudShown = "Synced", slowT = null;
 function cloud(txt, state) {
+  if (txt === cloudShown) return;
+  cloudShown = txt;
   const t = document.getElementById("__cloudtxt");
   const p = document.getElementById("__cloud");
   if (t) t.textContent = txt;
@@ -43,7 +46,6 @@ function cloud(txt, state) {
 function scheduleSave() {
   clearTimeout(saveT);
   pendingLocal = true;
-  if (settled) cloud("Saving…", "saving");
   saveT = setTimeout(async () => {
     if (!api) return;
     const d = api.currentLibrary();
@@ -52,11 +54,22 @@ function scheduleSave() {
     if (j === lastJson) { pendingLocal = false; cloud("Synced"); return; }
     lastJson = j;
     saving = true;
-    try { await saveProject(pid, proj); remember(pid, proj.title); refreshRecent(); cloud("Synced"); pendingLocal = false; }
-    catch (e) { console.warn("save failed", e); cloud("Offline — retrying"); setTimeout(scheduleSave, 3000); }
+    // only surface "Saving…" if the write is actually slow — otherwise it just flickers
+    clearTimeout(slowT);
+    slowT = setTimeout(() => { if (saving) cloud("Saving…", "saving"); }, 500);
+    try {
+      await saveProject(pid, proj);
+      remember(pid, proj.title); refreshRecent();
+      pendingLocal = false;
+      clearTimeout(slowT); cloud("Synced");
+    } catch (e) {
+      console.warn("save failed", e);
+      clearTimeout(slowT); cloud("Offline — retrying");
+      setTimeout(scheduleSave, 3000);
+    }
     saving = false;
     settled = true;
-  }, 900);
+  }, 1200);
 }
 
 function refreshRecent() {
