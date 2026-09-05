@@ -28,19 +28,40 @@ export async function loadProject(id) {
 }
 
 // Preflight the connection so the UI can show a specific message.
-// Returns: "ok" | "no_table" | "blocked" | "db:<msg>"
+// Returns one of: "ok" | "no_table"
+//   | "blocked:<detail>"  (network/CORS/extension — the browser couldn't complete the request)
+//   | "db:<detail>"       (reached the database, but it complained)
 export async function preflight() {
-  let res;
+  const url = import.meta.env.VITE_SUPABASE_URL;
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+  // 1. Can we even reach the REST endpoint with a raw fetch?
+  let rawStatus = 0, rawErr = "";
   try {
-    res = await supabase.from("projects").select("id").limit(1);
+    const r = await fetch(url + "/rest/v1/projects?select=id&limit=1", { headers: { apikey: key, Authorization: "Bearer " + key } });
+    rawStatus = r.status;
+    if (r.status === 200) {
+      const body = await r.json().catch(() => null);
+      if (Array.isArray(body)) return "ok";
+    }
+    const txt = await r.text().catch(() => "");
+    if (/does not exist|could not find the table|schema cache/i.test(txt)) return "no_table";
+    if (r.status === 401 || /invalid.*key|api key/i.test(txt)) return "db:API key rejected (status " + r.status + "). The VITE_SUPABASE_ANON_KEY may be wrong.";
+    rawErr = "HTTP " + r.status + " " + txt.slice(0, 140);
   } catch (e) {
-    return "blocked";
+    return "blocked:" + (e && e.message ? e.message : "fetch failed") + " — a browser extension, VPN, proxy, or DNS filter is stopping the request to " + new URL(url).host + ".";
   }
-  if (!res.error) return "ok";
-  const m = String(res.error.message || "");
-  if (/failed to fetch|networkerror|load failed|fetch/i.test(m)) return "blocked";
-  if (/does not exist|could not find the table|schema cache/i.test(m)) return "no_table";
-  return "db:" + m;
+
+  // 2. Raw fetch got through but not a clean 200 — fall back to the SDK for its error text
+  try {
+    const { error } = await supabase.from("projects").select("id").limit(1);
+    if (!error) return "ok";
+    const m = String(error.message || "");
+    if (/does not exist|could not find the table|schema cache/i.test(m)) return "no_table";
+    return "db:" + m + (rawErr ? "  (" + rawErr + ")" : "");
+  } catch (e) {
+    return "blocked:" + (e && e.message ? e.message : "request failed");
+  }
 }
 
 export async function createProject(projectObj) {

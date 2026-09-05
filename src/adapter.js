@@ -146,14 +146,15 @@ function fatal(title, html) {
 
 (async () => {
   const state = await preflight();
-  if (state === "blocked") {
+  if (state.startsWith("blocked:")) {
     fatal("Can't reach the cloud",
-      "<p>The browser can't connect to <code>" + SB_HOST + "</code>. That's almost always a blocker on this device, not a bug:</p>" +
-      "<ul><li>An ad-blocker / privacy extension (uBlock, Privacy Badger, Ghostery…) — allow this site or pause it</li>" +
-      "<li>Brave: turn <b>Shields down</b> for this site</li>" +
-      "<li>A VPN, corporate proxy, or DNS filter blocking Supabase</li>" +
-      "<li>Offline</li></ul>" +
-      "<p>Try an incognito window with extensions disabled, or a different browser / network.</p>");
+      "<p>The browser couldn't complete a request to <code>" + SB_HOST + "</code> — even though the address itself may open fine in a tab. A request-level block (not a full network block):</p>" +
+      "<ul><li>An ad-blocker / privacy extension (uBlock, Privacy Badger, Ghostery, AdGuard…) — allow this site or pause it</li>" +
+      "<li>Brave: <b>Shields down</b> for this site</li>" +
+      "<li>A VPN, corporate proxy, or \"web filter\" that blocks cross-site API calls</li>" +
+      "<li>Firefox with strict tracking protection — turn it off for this site</li></ul>" +
+      "<p>Quickest check: open this page in an <b>incognito/private window</b>. If it works there, an extension is the cause.</p>" +
+      "<p style=\"color:#6b6357;font-size:12px;margin-top:16px\">Technical detail: " + state.slice(8).replace(/</g, "") + "</p>");
     return;
   }
   if (state === "no_table") {
@@ -163,7 +164,9 @@ function fatal(title, html) {
     return;
   }
   if (state.startsWith("db:")) {
-    fatal("Database error", "<p>" + state.slice(3) + "</p><p style=\"color:#6b6357\">Re-run <code>supabase/schema.sql</code> — it's safe to run again.</p>");
+    fatal("Database error",
+      "<p>" + state.slice(3).replace(/</g, "") + "</p>" +
+      "<p style=\"color:#6b6357\">If it mentions a missing table or column, re-run <code>supabase/schema.sql</code> (safe to run again).</p>");
     return;
   }
 
