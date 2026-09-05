@@ -1,81 +1,51 @@
-# Noxel Studio — Cloud (Supabase shell)
+# Noxel Studio — Cloud (no accounts)
 
-The single-file artifact (`../noxel-studio/index.html`) already does cloud sync,
-live presence and comments through Claude's built-in `db` / `room` capabilities.
-The **one** thing it can't do is share a project **publicly** or with **accounts
-outside your organisation** — that store is org-internal by design.
+The standalone artifact already does everything offline. This is the version
+with **shareable cloud links**: open it, get a URL, send that URL to anyone —
+they open the same script and edit it live, like a shared doc. No sign-up,
+no email, no passwords.
 
-This folder is the shell that adds exactly that: Supabase auth, a project
-dashboard, email invites, public share links, plus a drop-in data layer
-(`src/supabase.js`) that mirrors every operation the editor needs.
+- **Live:** https://noxel-web.vercel.app
+- Each script is one row in Supabase, keyed by an unguessable UUID.
+  That UUID *is* the share secret — whoever has `/?p=<uuid>` can edit.
+- Comments live inside the project JSON, so they sync on every save.
+- Presence (who's editing which scene, live cursors) rides a Supabase
+  Realtime channel keyed by the project id.
 
-## What's included
+## Setup — one step
 
-`npm install && npm run dev`:
+1. Supabase → **SQL Editor → New query** → paste [`supabase/schema.sql`](supabase/schema.sql) → **Run**.
+   (It drops the old auth tables and creates one `projects` table with open
+   access.)
+2. Reload https://noxel-web.vercel.app — done.
 
-- **Magic-link sign-in** (no passwords)
-- **Dashboard** (`index.html`) — list / create / delete scripts, all in Supabase
-- **Share dialog** — public link + invite collaborators by email (editor /
-  viewer). Invites for people without an account are auto-claimed on signup
-  (`claim_invites()` trigger).
-- **Editor** (`editor.html?id=<uuid>`) — the full Noxel Studio editor (Write,
-  Breakdown, Shots, Schedule, Budget, PDF export, Fountain) with storage,
-  scene comments and live presence wired to Supabase through the `NoxelHost`
-  bridge in `public/app.js`. Realtime: another collaborator's save reloads the
-  project in place; presence shows who's editing which scene.
-- **`src/supabase.js`** — the data API: `loadProject`, `saveProject`,
-  `subscribeProject`, `joinPresence`, sharing + comments helpers.
+The Vercel env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) are already set.
 
-## Architecture
-
-`public/app.js` is the editor logic, lifted verbatim from the standalone
-artifact. It runs on browser `localStorage` by default; when a page sets
-`window.NoxelHost` before loading it, `load` / `save` / comments / presence
-route through that object instead. `editor.html`'s module does exactly that:
-fetches the project from Supabase, sets `NoxelHost`, then injects `app.js`.
-Comments ride along inside the project JSON (`data._comments`) so they sync
-with every save — no separate table wiring needed (the `comments` table in
-the schema is reserved for a future dedicated thread view).
-
-## Setup
-
-1. Create a project at [supabase.com](https://supabase.com).
-2. **SQL editor → New query →** paste and run [`supabase/schema.sql`](supabase/schema.sql).
-3. **Authentication → Providers →** enable **Email** (magic link is on by default).
-   Under **URL Configuration** set **Site URL** to your deployed origin and add
-   both `http://localhost:5273/**` and `https://<your-app>.vercel.app/**` to
-   **Redirect URLs** (the `/**` matters — the magic link must be allowed to
-   land on `/editor.html`).
-4. `cp .env.example .env.local` and fill `VITE_SUPABASE_URL` /
-   `VITE_SUPABASE_ANON_KEY` from **Project Settings → API**.
-5. `npm install && npm run dev`.
-
-## Keeping `public/app.js` in sync with the artifact
-
-`public/app.js` is the JS block extracted from the standalone editor. If you
-change the editor there, re-extract:
+## Local dev
 
 ```sh
-# from the artifact index.html, take everything between <script> and </script>
+cp .env.example .env.local   # fill in URL + publishable key
+npm install && npm run dev
 ```
 
-The editor's `NoxelHost` hooks are already in that source (dormant unless a host
-sets `window.NoxelHost`), so no post-processing is needed.
+## Layout
 
-## Data model
-
-| table | purpose |
+| file | what |
 |---|---|
-| `projects` | one row per script; `data` jsonb = the editor's project object |
-| `project_collaborators` | granted access (`viewer` / `editor`) |
-| `project_invites` | pending email invites, claimed on signup |
-| `comments` | scene comment threads |
+| `index.html` | the editor page (markup + styles lifted from the artifact) |
+| `public/app.js` | the editor logic, verbatim from the artifact's `<script>` |
+| `src/adapter.js` | wires `app.js` to Supabase via the `window.NoxelHost` bridge |
+| `src/supabase.js` | `loadProject` / `createProject` / `saveProject` / `subscribeProject` / `joinPresence` |
+| `supabase/schema.sql` | the one `projects` table + open RLS + realtime |
 
-RLS: owners full access; editors read+write `data` and add comments; viewers
-read-only. Realtime is enabled on `projects` and `comments`.
+`public/app.js` is a copy — if you change the editor in the artifact, re-copy
+the `<script>` body over it. Its `NoxelHost` hooks are already in that source
+and stay dormant in the standalone artifact.
 
-## Deploy
+## Note on the open-access model
 
-Any static host (Vercel / Netlify / Cloudflare Pages). Set the two `VITE_`
-env vars, add the deployed origin to Supabase redirect URLs, `npm run build`,
-serve `dist/`.
+Anyone with a project's UUID can read and write that row. UUIDs are random and
+never listed anywhere, so in practice a script is private until you share its
+link — same trust model as an unlisted document link. If you later want real
+accounts and per-user permissions, the git history has the auth version
+(`project_collaborators`, RLS by `auth.uid()`).
