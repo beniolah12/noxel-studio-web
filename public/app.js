@@ -189,12 +189,20 @@ scriptEl.addEventListener("input", e => {
   syncStats();
   scheduleScenes();
   if (live.peers && live.peers.length) renderScriptPeers();
+  updateAC(node);
 });
 
 scriptEl.addEventListener("keydown", e => {
   const node = document.activeElement.closest && document.activeElement.closest(".block");
   if (!node) return;
   const i = indexOf(node);
+
+  if (!$("#autocomplete").hidden && acItems.length) {
+    if (e.key === "ArrowDown") { e.preventDefault(); acIdx = (acIdx + 1) % acItems.length; renderAC(); return; }
+    if (e.key === "ArrowUp") { e.preventDefault(); acIdx = (acIdx - 1 + acItems.length) % acItems.length; renderAC(); return; }
+    if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); acceptAC(acIdx); return; }
+    if (e.key === "Escape") { hideAC(); return; }
+  }
 
   if (e.key === "Tab") {
     e.preventDefault();
@@ -284,6 +292,61 @@ function flashTag(type) {
   clearTimeout(tagTimer);
   tagTimer = setTimeout(() => tag.classList.remove("show"), 1400);
 }
+
+/* ---------------- character / location autocomplete ---------------- */
+let acItems = [], acIdx = 0, acNode = null;
+function acPool(type) {
+  const seen = [], out = [];
+  cur.blocks.forEach(b => {
+    if (type === "character" && b.type === "character") {
+      const n = (b.text || "").replace(/\(.*?\)/g, "").trim().toUpperCase();
+      if (n && seen.indexOf(n) < 0) { seen.push(n); out.push(n); }
+    } else if (type === "scene" && b.type === "scene") {
+      const t = (b.text || "").trim().toUpperCase();
+      if (t && seen.indexOf(t) < 0) { seen.push(t); out.push(t); }
+    }
+  });
+  return out;
+}
+function updateAC(node) {
+  const type = node.dataset.type;
+  if (type !== "character" && type !== "scene") return hideAC();
+  const q = node.textContent.trim().toUpperCase();
+  if (q.length < 1) return hideAC();
+  acItems = acPool(type).filter(x => x.startsWith(q) && x !== q).slice(0, 6);
+  if (!acItems.length) return hideAC();
+  acNode = node; acIdx = 0;
+  renderAC();
+}
+function renderAC() {
+  const box = $("#autocomplete");
+  box.innerHTML = "";
+  acItems.forEach((it, i) => {
+    const d = el("div", "ac-item" + (i === acIdx ? " on" : ""));
+    d.textContent = it;
+    d.onmousedown = e => { e.preventDefault(); acceptAC(i); };
+    box.appendChild(d);
+  });
+  const sel = window.getSelection();
+  let r = sel.rangeCount ? sel.getRangeAt(0).getBoundingClientRect() : null;
+  if (!r || (!r.width && !r.height)) r = (acNode || document.activeElement).getBoundingClientRect();
+  box.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 190)) + "px";
+  box.style.top = (r.bottom + 4) + "px";
+  box.hidden = false;
+}
+function hideAC() { $("#autocomplete").hidden = true; acItems = []; acNode = null; }
+function acceptAC(i) {
+  if (!acNode || !acItems[i]) return hideAC();
+  const val = acItems[i];
+  acNode.textContent = val;
+  const idx = indexOf(acNode);
+  if (idx > -1) cur.blocks[idx].text = val;
+  placeCaret(acNode, true);
+  toggleEmpty(acNode);
+  hideAC();
+  save(); syncStats(); scheduleScenes();
+}
+scriptEl.addEventListener("focusout", () => setTimeout(hideAC, 120));
 
 /* ---------------- scene navigator ---------------- */
 let sceneTimer = null;

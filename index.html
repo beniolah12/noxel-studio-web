@@ -325,6 +325,15 @@
   }
   .typetag.show { opacity: 1; transform: none; }
 
+  #autocomplete {
+    position: fixed; z-index: 30;
+    background: var(--page); border: 1px solid var(--rule); border-radius: 7px;
+    box-shadow: var(--shadow); overflow: hidden; min-width: 150px;
+    font-family: var(--mono); font-size: 12px;
+  }
+  .ac-item { padding: 6px 11px; cursor: pointer; text-transform: uppercase; color: var(--muted); }
+  .ac-item.on, .ac-item:hover { background: var(--accent-soft); color: var(--ink); }
+
   /* ---------- footer ---------- */
   .foot {
     grid-area: foot;
@@ -754,6 +763,7 @@
 </div>
 
 <div class="typetag" id="typetag">Action</div>
+<div id="autocomplete" hidden></div>
 
 <div class="scrim" id="scrim">
   <div class="modal" id="modal"></div>
