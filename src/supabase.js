@@ -16,7 +16,7 @@ function proxyFetch(input, init) {
   if (cut >= 0) {
     const path = u.slice(cut + SB_HOST.length);           // "/rest/v1/projects?..."
     if (path.startsWith("/rest/") || path.startsWith("/auth/")) {
-      return fetch("/api/db?p=" + encodeURIComponent(path), init);
+      return fetch("/api/db" + path, init);               // plain path, no encoding
     }
   }
   return fetch(input, init);

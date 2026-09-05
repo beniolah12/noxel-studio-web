@@ -1,7 +1,8 @@
-// Same-origin proxy to Supabase REST/Auth.
-// The client calls /api/db?p=/rest/v1/... so the request never leaves the
-// noxel-web.vercel.app origin — DNS filters, ad-blockers, corporate proxies
-// and CORS all stop mattering. Runs on Vercel's servers, not the viewer's.
+// Same-origin proxy to Supabase. The client calls
+//   /api/db/rest/v1/projects?select=...        (a plain-looking path)
+// and this forwards it to Supabase server-side, adding the key. Keeping the
+// path ordinary (no encoded slashes, no nested query) avoids web filters /
+// WAFs that reject API-shaped query strings.
 
 const SB_URL = process.env.SB_URL || "https://rdtvejebscvggfoqwjqx.supabase.co";
 const SB_KEY = process.env.SB_KEY || "sb_publishable_GEs52kcMUf4F5Tvq-xz84g_RkW3mEkP";
@@ -10,9 +11,10 @@ const PASS_REQ = ["accept", "content-type", "prefer", "range", "accept-profile",
 const PASS_RES = ["content-type", "content-range", "range-unit", "prefer-applied"];
 
 export default async function handler(req, res) {
-  const p = typeof req.query.p === "string" ? req.query.p : "";
-  if (!p.startsWith("/rest/") && !p.startsWith("/auth/")) {
-    res.status(400).json({ error: "bad path" });
+  // req.url looks like /api/db/rest/v1/projects?select=id — strip the prefix.
+  const rel = req.url.replace(/^\/api\/db\//, "/");
+  if (!rel.startsWith("/rest/") && !rel.startsWith("/auth/")) {
+    res.status(400).json({ error: "bad path", rel });
     return;
   }
 
@@ -28,9 +30,9 @@ export default async function handler(req, res) {
 
   let r;
   try {
-    r = await fetch(SB_URL + p, { method: req.method, headers, body });
+    r = await fetch(SB_URL + rel, { method: req.method, headers, body });
   } catch (e) {
-    res.status(502).json({ error: "upstream unreachable", detail: String(e && e.message || e) });
+    res.status(502).json({ error: "upstream unreachable", detail: String((e && e.message) || e) });
     return;
   }
 
