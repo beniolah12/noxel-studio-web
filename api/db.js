@@ -6,7 +6,7 @@
 const SB_URL = process.env.SB_URL || "https://rdtvejebscvggfoqwjqx.supabase.co";
 const SB_KEY = process.env.SB_KEY || "sb_publishable_GEs52kcMUf4F5Tvq-xz84g_RkW3mEkP";
 
-const PASS_REQ = ["content-type", "prefer", "range", "accept-profile", "content-profile", "x-client-info"];
+const PASS_REQ = ["accept", "content-type", "prefer", "range", "accept-profile", "content-profile", "x-client-info", "x-upsert"];
 const PASS_RES = ["content-type", "content-range", "range-unit", "prefer-applied"];
 
 export default async function handler(req, res) {

@@ -176,6 +176,7 @@ function fatal(title, html) {
     const p = blank();
     try {
       pid = await createProject(p);
+      if (!pid || pid === "undefined") throw new Error("no id returned from create");
       history.replaceState(null, "", "?p=" + pid);
       row = { id: pid, title: p.title, data: p };
     } catch (e) {
