@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Noxel Studio — Cloud</title>
+  <style>
+    :root { color-scheme: light dark; --accent: #b0402a; --bg: #faf8f3; --fg: #1c1813; --rule: #e4ded1; --card: #fff; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #16130f; --fg: #ece5d8; --rule: #322c22; --card: #211d17; --accent: #e0714f; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 "IBM Plex Mono", ui-monospace, Menlo, monospace; }
+    header { display: flex; align-items: center; gap: 14px; padding: 14px 22px; border-bottom: 1px solid var(--rule); }
+    header b { color: var(--accent); letter-spacing: .14em; text-transform: uppercase; font-size: 13px; }
+    main { max-width: 760px; margin: 40px auto; padding: 0 22px; }
+    h1 { font-size: 18px; }
+    input, button { font: inherit; padding: 9px 12px; border-radius: 7px; border: 1px solid var(--rule); background: var(--card); color: var(--fg); }
+    button { cursor: pointer; }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .proj { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--rule); border-radius: 8px; margin-bottom: 8px; background: var(--card); }
+    .proj .t { flex: 1; font-weight: 600; }
+    .proj .m { font-size: 12px; opacity: .6; }
+    .muted { opacity: .65; font-size: 13px; }
+    dialog { border: 1px solid var(--rule); border-radius: 10px; background: var(--card); color: var(--fg); max-width: 420px; }
+    dialog::backdrop { background: rgba(0,0,0,.4); }
+  </style>
+</head>
+<body>
+  <header>
+    <b>Noxel</b><span class="muted" id="who"></span>
+    <span style="flex:1"></span>
+    <button id="signout" hidden>Sign out</button>
+  </header>
+  <main id="app">Loading…</main>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
