@@ -17,10 +17,10 @@ export const supabase = createClient(url || "http://localhost", key || "anon", {
 });
 
 /* ─────────────── auth ─────────────── */
-export async function signInWithEmail(email) {
+export async function signInWithEmail(email, redirectTo) {
   return supabase.auth.signInWithOtp({
     email,
-    options: { emailRedirectTo: window.location.origin }
+    options: { emailRedirectTo: redirectTo || window.location.origin }
   });
 }
 export async function signOut() { return supabase.auth.signOut(); }

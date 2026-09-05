@@ -19,6 +19,8 @@ currentUser().then(render);
 
 async function render(user) {
   if (!user) return renderSignIn();
+  const next = new URLSearchParams(location.search).get("next");
+  if (next && next.startsWith("/")) { location.href = next; return; }
   who.textContent = user.email;
   signoutBtn.hidden = false;
 
@@ -78,8 +80,10 @@ function renderSignIn() {
   document.getElementById("f").onsubmit = async (e) => {
     e.preventDefault();
     const email = document.getElementById("email").value.trim();
-    const { error } = await signInWithEmail(email);
-    document.getElementById("msg").textContent = error ? error.message : "Check your inbox.";
+    const next = new URLSearchParams(location.search).get("next");
+    const redirect = next && next.startsWith("/") ? location.origin + next : location.origin;
+    const { error } = await signInWithEmail(email, redirect);
+    document.getElementById("msg").textContent = error ? error.message : "Check your inbox for the sign-in link.";
   };
 }
 
