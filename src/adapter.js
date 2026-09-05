@@ -1,4 +1,6 @@
-import { loadProject, createProject, saveProject, subscribeProject, joinPresence, schemaReady } from "/src/supabase.js";
+import { loadProject, createProject, saveProject, subscribeProject, joinPresence, preflight } from "/src/supabase.js";
+
+const SB_HOST = "rdtvejebscvggfoqwjqx.supabase.co";
 
 const qs = new URLSearchParams(location.search);
 let pid = qs.get("p");
@@ -120,19 +122,38 @@ window.NoxelHost = {
   }
 };
 
-function fatal(msg, detail) {
+function fatal(title, html) {
   document.body.innerHTML =
-    "<div style=\"font:14px/1.6 system-ui;padding:48px;max-width:600px;margin:auto\">" +
-    "<h2 style=\"font:600 16px/1 'IBM Plex Mono',monospace;color:#b0402a\">Noxel Studio — setup needed</h2>" +
-    "<p>" + msg + "</p>" + (detail ? "<pre style=\"background:#f1ede3;padding:10px;border-radius:6px;overflow:auto;font-size:12px\">" + detail + "</pre>" : "") +
+    "<div style=\"font:14px/1.65 system-ui;padding:48px;max-width:620px;margin:auto;color:#1c1813\">" +
+    "<h2 style=\"font:600 15px/1.3 'IBM Plex Mono',monospace;color:#b0402a;margin:0 0 12px\">" + title + "</h2>" +
+    html +
+    "<p style=\"margin-top:20px\"><button onclick=\"location.reload()\" style=\"font:13px 'IBM Plex Mono',monospace;padding:8px 14px;border:1px solid #b0402a;background:#b0402a;color:#fff;border-radius:7px;cursor:pointer\">Reload</button></p>" +
     "</div>";
 }
 
 (async () => {
-  if (!(await schemaReady())) {
-    fatal("Run <code>supabase/schema.sql</code> once in your Supabase project (SQL Editor → New query → paste → Run), then reload this page.");
+  const state = await preflight();
+  if (state === "blocked") {
+    fatal("Can't reach the cloud",
+      "<p>The browser can't connect to <code>" + SB_HOST + "</code>. That's almost always a blocker on this device, not a bug:</p>" +
+      "<ul><li>An ad-blocker / privacy extension (uBlock, Privacy Badger, Ghostery…) — allow this site or pause it</li>" +
+      "<li>Brave: turn <b>Shields down</b> for this site</li>" +
+      "<li>A VPN, corporate proxy, or DNS filter blocking Supabase</li>" +
+      "<li>Offline</li></ul>" +
+      "<p>Try an incognito window with extensions disabled, or a different browser / network.</p>");
     return;
   }
+  if (state === "no_table") {
+    fatal("One setup step left",
+      "<p>In your Supabase project: <b>SQL Editor → New query</b>, paste <code>supabase/schema.sql</code>, press <b>Run</b>, then reload.</p>" +
+      "<p style=\"color:#6b6357\">If you already did and still see this, check you ran it in the project whose URL is <code>" + SB_HOST + "</code>.</p>");
+    return;
+  }
+  if (state.startsWith("db:")) {
+    fatal("Database error", "<p>" + state.slice(3) + "</p><p style=\"color:#6b6357\">Re-run <code>supabase/schema.sql</code> — it's safe to run again.</p>");
+    return;
+  }
+
   let row = null;
   if (pid) { try { row = await loadProject(pid); } catch (e) { console.warn(e); } }
   if (!row) {
@@ -142,7 +163,8 @@ function fatal(msg, detail) {
       history.replaceState(null, "", "?p=" + pid);
       row = { id: pid, title: p.title, data: p };
     } catch (e) {
-      fatal("Couldn't create a script. Make sure you ran the latest <code>supabase/schema.sql</code> (it drops the old tables and sets open access — no login).", e.message);
+      fatal("Couldn't create a script",
+        "<p>" + (e.message || e) + "</p><p style=\"color:#6b6357\">Re-run <code>supabase/schema.sql</code> (it's safe to run again).</p>");
       return;
     }
   }

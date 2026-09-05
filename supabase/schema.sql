@@ -26,4 +26,10 @@ create policy "create any project" on public.projects for insert with check (tru
 create policy "update any project" on public.projects for update using (true) with check (true);
 
 -- Realtime so collaborators see each other's saves live.
-alter publication supabase_realtime add table public.projects;
+-- (guarded so the whole script is safe to run more than once)
+do $$
+begin
+  alter publication supabase_realtime add table public.projects;
+exception
+  when duplicate_object then null;
+end $$;

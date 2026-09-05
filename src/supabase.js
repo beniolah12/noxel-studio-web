@@ -27,10 +27,20 @@ export async function loadProject(id) {
   return data; // null if not found
 }
 
-// Debug helper the UI uses to show a clear "run the schema" message.
-export async function schemaReady() {
-  const { error } = await supabase.from("projects").select("id").limit(1);
-  return !error;
+// Preflight the connection so the UI can show a specific message.
+// Returns: "ok" | "no_table" | "blocked" | "db:<msg>"
+export async function preflight() {
+  let res;
+  try {
+    res = await supabase.from("projects").select("id").limit(1);
+  } catch (e) {
+    return "blocked";
+  }
+  if (!res.error) return "ok";
+  const m = String(res.error.message || "");
+  if (/failed to fetch|networkerror|load failed|fetch/i.test(m)) return "blocked";
+  if (/does not exist|could not find the table|schema cache/i.test(m)) return "no_table";
+  return "db:" + m;
 }
 
 export async function createProject(projectObj) {
