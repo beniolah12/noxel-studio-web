@@ -71,7 +71,7 @@ function scheduleSave() {
     proj._w = tabPeerId + ":" + Date.now();                                 // mark it as ours
     saving = true;
     clearTimeout(slowT);
-    slowT = setTimeout(() => { if (saving) cloud("Saving…", "saving"); }, 500);
+    slowT = setTimeout(() => { if (saving) cloud("Saving…", "saving"); }, 1000);
     try {
       await saveProject(pid, proj);
       remember(pid, proj.title); refreshRecent();
