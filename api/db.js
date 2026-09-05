@@ -1,8 +1,7 @@
-// Same-origin proxy to Supabase. The client calls
-//   /api/db/rest/v1/projects?select=...        (a plain-looking path)
-// and this forwards it to Supabase server-side, adding the key. Keeping the
-// path ordinary (no encoded slashes, no nested query) avoids web filters /
-// WAFs that reject API-shaped query strings.
+// Same-origin proxy to Supabase REST/Auth.
+// The client sends the Supabase sub-path in the `x-sb-path` header (not the
+// query string) so nothing in the URL looks like an API call to a web
+// filter / WAF. Runs on Vercel's servers, not the viewer's device.
 
 const SB_URL = process.env.SB_URL || "https://rdtvejebscvggfoqwjqx.supabase.co";
 const SB_KEY = process.env.SB_KEY || "sb_publishable_GEs52kcMUf4F5Tvq-xz84g_RkW3mEkP";
@@ -11,10 +10,11 @@ const PASS_REQ = ["accept", "content-type", "prefer", "range", "accept-profile",
 const PASS_RES = ["content-type", "content-range", "range-unit", "prefer-applied"];
 
 export default async function handler(req, res) {
-  // req.url looks like /api/db/rest/v1/projects?select=id — strip the prefix.
-  const rel = req.url.replace(/^\/api\/db\//, "/");
+  // Path comes in the header; fall back to ?p= for older clients.
+  let rel = req.headers["x-sb-path"] || (typeof req.query.p === "string" ? req.query.p : "");
+  if (Array.isArray(rel)) rel = rel[0];
   if (!rel.startsWith("/rest/") && !rel.startsWith("/auth/")) {
-    res.status(400).json({ error: "bad path", rel });
+    res.status(400).json({ error: "bad path" });
     return;
   }
 

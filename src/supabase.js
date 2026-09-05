@@ -16,7 +16,11 @@ function proxyFetch(input, init) {
   if (cut >= 0) {
     const path = u.slice(cut + SB_HOST.length);           // "/rest/v1/projects?..."
     if (path.startsWith("/rest/") || path.startsWith("/auth/")) {
-      return fetch("/api/db" + path, init);               // plain path, no encoding
+      const opts = Object.assign({}, init);
+      const h = new Headers((init && init.headers) || {});
+      h.set("x-sb-path", path);
+      opts.headers = h;
+      return fetch("/api/db", opts);                       // URL reveals nothing; path is in a header
     }
   }
   return fetch(input, init);
