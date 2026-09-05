@@ -66,10 +66,17 @@ export function subscribeProject(id, onChange) {
 
 // Ephemeral presence over a per-project Realtime channel — no auth needed.
 export function joinPresence(id, me, onPeers) {
+  let current = Object.assign({}, me);
   const ch = supabase.channel("presence:" + id, { config: { presence: { key: me.id } } });
   ch.on("presence", { event: "sync" }, () => {
     onPeers(Object.values(ch.presenceState()).flat());
   });
-  ch.subscribe(async (status) => { if (status === "SUBSCRIBED") await ch.track(me); });
-  return { update: (patch) => ch.track(Object.assign({}, me, patch)), leave: () => supabase.removeChannel(ch) };
+  const track = () => ch.track(current).catch(() => {});
+  ch.subscribe((status) => { if (status === "SUBSCRIBED") track(); });
+  const hb = setInterval(track, 15000);              // keep the entry alive across reconnects
+  window.addEventListener("beforeunload", () => { try { supabase.removeChannel(ch); } catch (e) {} });
+  return {
+    update: (patch) => { current = Object.assign({}, current, patch); return track(); },
+    leave: () => { clearInterval(hb); return supabase.removeChannel(ch); }
+  };
 }

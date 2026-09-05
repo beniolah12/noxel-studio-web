@@ -1,4 +1,4 @@
-import { loadProject, createProject, saveProject, subscribeProject, joinPresence, clientTag, schemaReady } from "/src/supabase.js";
+import { loadProject, createProject, saveProject, subscribeProject, joinPresence, schemaReady } from "/src/supabase.js";
 
 const qs = new URLSearchParams(location.search);
 let pid = qs.get("p");
@@ -17,53 +17,107 @@ function blank() {
     breakdown: null, shots: {}, days: [], dayOf: {}, callsheets: {}, budget: [], stripOrder: {}, _comments: [] };
 }
 
-let api = null, comments = [], lastJson = "", saveT = null, pres = null, saving = false;
+let api = null, comments = [], lastJson = "", saveT = null, pres = null, saving = false, settled = false, pendingLocal = false, lastPeers = [];
+
+const COLORS = ["#e0714f", "#4f9de0", "#63b463", "#c98bdb", "#d8a13a", "#3ec7c0"];
+const myColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+const tabPeerId = Math.random().toString(36).slice(2);
+let myName = "";
+try { myName = localStorage.getItem("noxel.web.name") || ""; } catch (e) {}
+function setMyName(n) {
+  myName = (n || "").trim() || myName;
+  try { localStorage.setItem("noxel.web.name", myName); } catch (e) {}
+  if (api) api.setName(myName);
+  if (pres) pres.update({ name: myName });
+}
+
+function cloud(txt, state) {
+  const t = document.getElementById("__cloudtxt");
+  const p = document.getElementById("__cloud");
+  if (t) t.textContent = txt;
+  if (p) p.classList.toggle("sync", state === "saving");
+}
 
 function scheduleSave() {
   clearTimeout(saveT);
-  document.getElementById("__savest") && (document.getElementById("__savest").textContent = "saving…");
+  pendingLocal = true;
+  if (settled) cloud("Saving…", "saving");
   saveT = setTimeout(async () => {
     if (!api) return;
     const d = api.currentLibrary();
     const proj = Object.assign({}, d.projects[0], { _comments: comments });
-    lastJson = JSON.stringify(proj);
+    const j = JSON.stringify(proj);
+    if (j === lastJson) { pendingLocal = false; cloud("Synced"); return; }
+    lastJson = j;
     saving = true;
-    try { await saveProject(pid, proj); remember(pid, proj.title); }
-    catch (e) { console.warn("save failed", e); }
+    try { await saveProject(pid, proj); remember(pid, proj.title); refreshRecent(); cloud("Synced"); pendingLocal = false; }
+    catch (e) { console.warn("save failed", e); cloud("Offline — retrying"); setTimeout(scheduleSave, 3000); }
     saving = false;
-    const s = document.getElementById("__savest"); if (s) s.textContent = "saved to cloud";
+    settled = true;
   }, 900);
 }
 
-function bar() {
-  const wrap = document.createElement("div");
-  wrap.style.cssText = "position:fixed;left:0;right:0;bottom:0;z-index:80;display:flex;gap:10px;align-items:center;padding:6px 14px;background:var(--page);border-top:1px solid var(--rule);font:11px/1 'IBM Plex Mono',monospace;color:var(--muted)";
+function refreshRecent() {
+  const sel = document.getElementById("__recent");
+  if (!sel) return;
   const list = recent();
-  const opts = list.map((r) => `<option value="${r.id}"${r.id === pid ? " selected" : ""}>${(r.title || "Untitled").replace(/</g, "")}</option>`).join("");
-  wrap.innerHTML = `
-    <select id="__recent" style="font:inherit;background:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:4px 6px;color:var(--ink);max-width:200px">${opts || '<option>this script</option>'}</select>
-    <button id="__new" style="font:inherit;background:var(--paper);border:1px solid var(--rule);border-radius:6px;padding:5px 9px;color:var(--ink);cursor:pointer">+ New</button>
-    <button id="__share" style="font:inherit;background:var(--accent);border:0;border-radius:6px;padding:5px 9px;color:#fff;cursor:pointer">Copy share link</button>
-    <span id="__savest" style="margin-left:auto">saved to cloud</span>`;
-  document.body.appendChild(wrap);
+  sel.hidden = list.length < 2;
+  sel.innerHTML = list.map((r) =>
+    `<option value="${r.id}"${r.id === pid ? " selected" : ""}>${(r.title || "Untitled").replace(/[<>&"]/g, "")}</option>`
+  ).join("") || `<option selected>this script</option>`;
+}
+
+function bar() {
+  const tb = document.querySelector(".topbar");
+  const brand = tb.querySelector(".brand");
+  const grp = document.createElement("div");
+  grp.style.cssText = "display:flex;gap:8px;align-items:center;flex-shrink:0";
+  grp.innerHTML = `
+    <select id="__recent" class="proj-select" style="font-size:12.5px;max-width:150px;padding-top:6px;padding-bottom:6px" title="Your scripts"></select>
+    <button id="__new" class="tbtn">+ New</button>
+    <button id="__share" class="tbtn primary">Share</button>
+    <span id="__cloud" class="cloud-pill on" title="Every change saves to the cloud"><span class="dot"></span><span id="__cloudtxt">Synced</span></span>`;
+  brand.after(grp);
+  refreshRecent();
+
   document.getElementById("__recent").onchange = (e) => { location.search = "?p=" + e.target.value; };
   document.getElementById("__new").onclick = async () => {
     const p = blank();
-    try { const id = await createProject(p); remember(id, p.title); location.search = "?p=" + id; } catch (e) { alert("Could not create: " + e.message); }
+    try { const id = await createProject(p); remember(id, p.title); location.search = "?p=" + id; }
+    catch (e) { alert("Could not create a new script: " + e.message); }
   };
-  document.getElementById("__share").onclick = async () => {
+  document.getElementById("__share").onclick = async (ev) => {
     const link = location.origin + "/?p=" + pid;
-    try { await navigator.clipboard.writeText(link); document.getElementById("__savest").textContent = "link copied — anyone with it can edit"; }
-    catch (e) { prompt("Share link:", link); }
+    try {
+      await navigator.clipboard.writeText(link);
+      const b = ev.currentTarget; const was = b.textContent;
+      b.textContent = "Link copied ✓"; setTimeout(() => (b.textContent = was), 1600);
+    } catch (e) { prompt("Share this link — anyone with it can edit:", link); }
   };
 }
 
 window.NoxelHost = {
   initialLibrary: null,
   onSave() { scheduleSave(); },
-  onComments(items) { comments = items || []; scheduleSave(); },
-  onPresence(state) { if (pres) pres.update(state); },
-  onReady(a) { api = a; a.setComments(comments); bar(); }
+  onComments(items) { comments = items || []; scheduleSave(); if (api) api.setComments(comments); },
+  onPresence(state) { if (pres) pres.update(Object.assign({}, state, { name: myName, color: myColor })); },
+  onName(n) { setMyName(n); },
+  onReady(a) {
+    api = a;
+    if (myName) a.setName(myName);
+    a.setComments(comments);
+    a.setPeers(lastPeers);
+    bar();
+    // Adopt the post-boot state as the sync baseline so on-load migrations
+    // (block ids, empty breakdown, …) don't trigger a full-document write
+    // that could clobber a collaborator mid-edit.
+    try {
+      const d = a.currentLibrary();
+      lastJson = JSON.stringify(Object.assign({}, d.projects[0], { _comments: comments }));
+    } catch (e) {}
+    pendingLocal = false;
+    settled = true;
+  }
 };
 
 function fatal(msg, detail) {
@@ -95,20 +149,37 @@ function fatal(msg, detail) {
   remember(pid, row.data.title || row.title);
   comments = Array.isArray(row.data._comments) ? row.data._comments : [];
   window.NoxelHost.initialLibrary = { projects: [row.data], currentId: row.data.id };
+  lastJson = JSON.stringify(Object.assign({}, row.data, { _comments: comments }));
 
   subscribeProject(pid, (fresh) => {
-    if (saving) return;
+    if (saving || pendingLocal) return;            // don't clobber unsaved local edits
+    const activelyEditing = document.activeElement &&
+      (document.activeElement.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName));
+    if (activelyEditing) return;
     const j = JSON.stringify(Object.assign({}, fresh.data, { _comments: fresh.data._comments || [] }));
     if (j === lastJson) return;
+    lastJson = j;
     comments = Array.isArray(fresh.data._comments) ? fresh.data._comments : comments;
-    if (api) { api.reload({ projects: [fresh.data], currentId: fresh.data.id }); api.setComments(comments); }
+    if (api) {
+      const mode = document.body.dataset.mode;
+      const scrollY = document.getElementById("main") ? document.getElementById("main").scrollTop : 0;
+      settled = false;
+      api.reload({ projects: [fresh.data], currentId: fresh.data.id });
+      api.setComments(comments);
+      api.setPeers(lastPeers);
+      if (mode && mode !== "write") { const mb = document.getElementById("mode-" + mode); if (mb) mb.click(); }
+      const mn = document.getElementById("main"); if (mn) mn.scrollTop = scrollY;
+      pendingLocal = false;
+      cloud("Updated by collaborator");
+      setTimeout(() => { settled = true; cloud("Synced"); }, 1600);
+    }
   });
 
-  let name = "Guest";
-  try { name = localStorage.getItem("noxel.web.name") || ("Guest " + Math.floor(Math.random() * 90 + 10)); localStorage.setItem("noxel.web.name", name); } catch (e) {}
-  const me = { id: clientTag, name, color: "#e0714f" };
+  if (!myName) myName = "Guest " + Math.floor(Math.random() * 90 + 10);
+  const me = { id: tabPeerId, name: myName, color: myColor };
   pres = joinPresence(pid, me, (peers) => {
-    if (api) api.setPeers(peers.filter((p) => p.id !== clientTag).map((p) => ({ peer: p.id, presence: p })));
+    lastPeers = peers.filter((p) => p.id !== tabPeerId).map((p) => ({ peer: p.id, presence: p }));
+    if (api) api.setPeers(lastPeers);
   });
 
   const s = document.createElement("script");

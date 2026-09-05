@@ -64,6 +64,7 @@
   }
   button { font-family: inherit; color: inherit; cursor: pointer; }
   ::selection { background: var(--accent-soft); }
+  [hidden] { display: none !important; }
 
   .app {
     display: grid;
@@ -78,7 +79,9 @@
     grid-area: top;
     display: flex;
     align-items: center;
-    gap: 18px;
+    gap: 14px;
+    row-gap: 8px;
+    flex-wrap: wrap;
     padding: 10px 18px;
     background: var(--page);
     border-bottom: 1px solid var(--rule);
@@ -87,6 +90,7 @@
     display: flex;
     align-items: baseline;
     gap: 9px;
+    flex-shrink: 0;
     font-family: var(--mono);
     font-weight: 600;
     letter-spacing: .14em;
@@ -120,17 +124,28 @@
     background: var(--paper);
     border: 1px solid var(--rule);
     border-radius: 7px;
-    padding: 7px 12px;
-    font-size: 13px;
+    padding: 6px 10px;
+    font-size: 12.5px;
     font-family: var(--mono);
     letter-spacing: .02em;
     white-space: nowrap;
+    flex-shrink: 0;
   }
   .tbtn:hover { border-color: var(--accent); color: var(--accent); }
   .tbtn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   .tbtn.primary:hover { filter: brightness(1.06); color: #fff; }
 
-  .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 7px; overflow: hidden; }
+  .menu-wrap { position: relative; flex-shrink: 0; }
+  .menu {
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
+    display: flex; flex-direction: column; gap: 4px; padding: 6px;
+    background: var(--page); border: 1px solid var(--rule); border-radius: 9px;
+    box-shadow: var(--shadow); min-width: 170px;
+  }
+  .menu .tbtn { justify-content: flex-start; border-color: transparent; background: none; }
+  .menu .tbtn:hover { background: var(--accent-soft); border-color: transparent; color: var(--ink); }
+
+  .seg { display: inline-flex; flex-shrink: 0; border: 1px solid var(--rule); border-radius: 7px; overflow: hidden; }
   .seg-btn {
     background: var(--paper); border: 0; padding: 7px 13px;
     font-family: var(--mono); font-size: 12px; letter-spacing: .03em; color: var(--muted);
@@ -700,9 +715,15 @@
     <div class="peers" id="peers" hidden></div>
     <button class="cloud-pill" id="cloudPill" title="Sync this library to the cloud"><span class="dot"></span><span id="cloudTxt">Local</span></button>
     <button class="tbtn" id="notesBtn">Notes</button>
-    <button class="tbtn" id="dataBtn">Backup</button>
-    <button class="tbtn" id="titleBtn">Title page</button>
     <button class="tbtn primary" id="pdfBtn">Export PDF</button>
+    <div class="menu-wrap">
+      <button class="tbtn" id="moreBtn" aria-haspopup="true" aria-expanded="false" title="More">More</button>
+      <div class="menu" id="moreMenu" hidden>
+        <button class="tbtn" id="titleBtn">Title page</button>
+        <button class="tbtn" id="dataBtn">Backup &amp; formats</button>
+        <button class="tbtn" id="themeBtn">Toggle theme</button>
+      </div>
+    </div>
   </header>
 
   <nav class="nav" id="nav">

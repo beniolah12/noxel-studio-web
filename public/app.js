@@ -394,7 +394,31 @@ $("#newBtn").addEventListener("click", () => {
 const scrim = $("#scrim");
 function closeModal() { scrim.classList.remove("open"); }
 scrim.addEventListener("click", e => { if (e.target === scrim) closeModal(); });
-document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") { closeModal(); closeMenu(); } });
+
+/* ---------------- overflow menu + theme ---------------- */
+function closeMenu() { $("#moreMenu").hidden = true; $("#moreBtn").setAttribute("aria-expanded", "false"); }
+$("#moreBtn").addEventListener("click", e => {
+  e.stopPropagation();
+  const m = $("#moreMenu");
+  m.hidden = !m.hidden;
+  $("#moreBtn").setAttribute("aria-expanded", String(!m.hidden));
+});
+$("#moreMenu").addEventListener("click", () => closeMenu());
+document.addEventListener("click", e => { if (!e.target.closest(".menu-wrap")) closeMenu(); });
+
+(function initTheme() {
+  let t = null;
+  try { t = localStorage.getItem("noxel.theme"); } catch (e) {}
+  if (t === "dark" || t === "light") document.documentElement.dataset.theme = t;
+})();
+$("#themeBtn").addEventListener("click", () => {
+  const cur = document.documentElement.dataset.theme
+    || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("noxel.theme", next); } catch (e) {}
+});
 
 $("#titleBtn").addEventListener("click", () => {
   $("#modal").innerHTML = `
@@ -440,7 +464,12 @@ $("#dataBtn").addEventListener("click", () => {
     </div>
     <div class="msg" id="mMsg"></div>`;
   $("#mName").value = live.name || "";
-  $("#mName").oninput = () => { live.name = $("#mName").value.trim(); try { localStorage.setItem("noxel.name", live.name); } catch (e) {} pushPresence(); };
+  $("#mName").oninput = () => {
+    live.name = $("#mName").value.trim();
+    try { localStorage.setItem("noxel.name", live.name); } catch (e) {}
+    if (HOST && HOST.onName) { try { HOST.onName(live.name); } catch (e) {} }
+    pushPresence();
+  };
   $("#mFT").textContent = cur.title;
   $("#mJson").value = JSON.stringify(data, null, 2);
   $("#mClose").onclick = closeModal;
@@ -1360,7 +1389,11 @@ async function initRoom() {
 }
 function pushPresence() {
   const now = Date.now();
-  if (now - live.pT < 250) return;
+  if (now - live.pT < 250) {
+    clearTimeout(live.pTrail);
+    live.pTrail = setTimeout(pushPresence, 260);
+    return;
+  }
   live.pT = now;
   const state = {
     name: live.name || "Guest", color: live.color,
