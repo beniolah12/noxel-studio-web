@@ -179,9 +179,11 @@ function fatal(title, html) {
     return;
   }
   if (state.startsWith("db:")) {
-    fatal("Database error",
-      "<p>" + state.slice(3).replace(/</g, "") + "</p>" +
-      "<p style=\"color:#6b6357\">If it mentions a missing table or column, re-run <code>supabase/schema.sql</code> (safe to run again).</p>");
+    const detail = state.slice(3).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+    fatal("Couldn't load your scripts",
+      "<p>The cloud responded, but not the way we expected. Usually this clears on its own — try <b>Reload</b>.</p>" +
+      "<p style=\"color:#6b6357\">If it keeps happening, re-run <code>supabase/schema.sql</code> (safe to run again).</p>" +
+      "<p style=\"color:#6b6357;font-size:12px;margin-top:14px\">" + (detail || "no detail") + "</p>");
     return;
   }
 
