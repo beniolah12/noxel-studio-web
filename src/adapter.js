@@ -159,7 +159,25 @@ function fatal(title, html) {
     "</div>";
 }
 
+// If a newer build is live but a cache handed us stale HTML, reload once.
+async function checkFreshBuild() {
+  const mine = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_BUILD) || "dev";
+  if (mine === "dev") return;
+  try {
+    const r = await fetch("/api/version", { cache: "no-store" });
+    if (!r.ok) return;
+    const { build } = await r.json();
+    if (build && build !== mine && sessionStorage.getItem("noxel.reloadedFor") !== build) {
+      sessionStorage.setItem("noxel.reloadedFor", build);
+      location.reload();
+      return true;
+    }
+  } catch (e) {}
+  return false;
+}
+
 (async () => {
+  if (await checkFreshBuild()) return;
   const state = await preflight();
   if (state.startsWith("blocked:")) {
     fatal("Can't reach the cloud",

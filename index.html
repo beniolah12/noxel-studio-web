@@ -148,8 +148,31 @@
     background: var(--page); border: 1px solid var(--rule); border-radius: 9px;
     box-shadow: var(--shadow); min-width: 170px;
   }
-  .menu .tbtn { justify-content: flex-start; border-color: transparent; background: none; }
+  .menu .tbtn { justify-content: flex-start; border-color: transparent; background: none; gap: 10px; padding: 8px 10px; }
   .menu .tbtn:hover { background: var(--accent-soft); border-color: transparent; color: var(--ink); }
+  .menu .tbtn span { width: 16px; text-align: center; color: var(--faint); font-size: 14px; }
+  .menu-sec {
+    font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--faint); padding: 8px 10px 3px;
+  }
+  .menu-sec:first-child { padding-top: 3px; }
+
+  /* palette picker */
+  .pal-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 6px; }
+  .pal {
+    display: flex; flex-direction: column; gap: 6px; align-items: stretch;
+    background: none; border: 2px solid var(--rule); border-radius: 10px; padding: 8px; cursor: pointer;
+  }
+  .pal:hover { border-color: var(--faint); }
+  .pal.on { border-color: var(--accent); }
+  .pal-prev {
+    height: 46px; border-radius: 6px; border: 1px solid rgba(0,0,0,.12);
+    display: flex; align-items: center; justify-content: center; position: relative;
+    font-family: var(--script); font-weight: 700; font-size: 15px;
+  }
+  .pal-prev i { position: absolute; right: 7px; bottom: 7px; width: 12px; height: 12px; border-radius: 50%; }
+  .pal-name { font-family: var(--mono); font-size: 12px; color: var(--muted); text-align: center; }
+  .size-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
 
   .seg { display: inline-flex; flex-shrink: 0; border: 1px solid var(--rule); border-radius: 7px; overflow: hidden; }
   .seg-btn {
@@ -800,11 +823,15 @@
     <button class="tbtn" id="notesBtn">Notes</button>
     <button class="tbtn primary" id="pdfBtn">Export PDF</button>
     <div class="menu-wrap">
-      <button class="tbtn" id="moreBtn" aria-haspopup="true" aria-expanded="false" title="More">More</button>
+      <button class="tbtn" id="moreBtn" aria-haspopup="true" aria-expanded="false" title="More options">More &#9662;</button>
       <div class="menu" id="moreMenu" hidden>
-        <button class="tbtn" id="titleBtn">Title page</button>
-        <button class="tbtn" id="dataBtn">Backup &amp; formats</button>
-        <button class="tbtn" id="themeBtn">Toggle theme</button>
+        <div class="menu-sec">Script</div>
+        <button class="tbtn" id="titleBtn"><span>&#9635;</span> Title page</button>
+        <button class="tbtn" id="dataBtn"><span>&#8681;</span> Backup &amp; formats</button>
+        <div class="menu-sec">Look</div>
+        <button class="tbtn" id="themeBtn"><span>&#9681;</span> Appearance</button>
+        <div class="menu-sec">Learn</div>
+        <button class="tbtn" id="helpBtn2"><span>?</span> How it works</button>
       </div>
     </div>
   </header>

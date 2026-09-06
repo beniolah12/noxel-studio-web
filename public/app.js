@@ -541,20 +541,101 @@ $("#moreBtn").addEventListener("click", e => {
 $("#moreMenu").addEventListener("click", () => closeMenu());
 document.addEventListener("click", e => { if (!e.target.closest(".menu-wrap")) closeMenu(); });
 
-(function initTheme() {
-  let t = null;
-  try { t = localStorage.getItem("noxel.theme"); } catch (e) {}
-  if (t === "dark" || t === "light") document.documentElement.dataset.theme = t;
+/* ---------------- colour schemes ---------------- */
+const TOKENS = ["paper", "page", "ink", "muted", "faint", "rule", "rail", "accent", "accent-soft"];
+const PALETTES = {
+  auto:     { name: "Auto",      dark: null, sw: ["#faf8f3", "#a63a24", "#211c15"] },
+  paper:    { name: "Paper",     dark: false, sw: ["#f7f4ec", "#a63a24", "#211c15"],
+              t: ["#f7f4ec", "#ffffff", "#211c15", "#574f3f", "#7c7362", "#e0dacb", "#efeadd", "#a63a24", "#f1dcd4"] },
+  slate:    { name: "Slate",     dark: false, sw: ["#f3f5f8", "#3355d1", "#1b2230"],
+              t: ["#f3f5f8", "#ffffff", "#1b2230", "#495468", "#7a8598", "#dde2ea", "#eaedf2", "#3355d1", "#dde4fb"] },
+  sepia:    { name: "Sepia",     dark: false, sw: ["#f2e8d5", "#9a5b2c", "#3b2f1e"],
+              t: ["#f2e8d5", "#faf3e3", "#3b2f1e", "#6b5636", "#8f7852", "#ddc9a3", "#e9dcc0", "#9a5b2c", "#ecdcc0"] },
+  mono:     { name: "Mono",      dark: false, sw: ["#ffffff", "#111111", "#111111"],
+              t: ["#ffffff", "#ffffff", "#0a0a0a", "#2e2e2e", "#5c5c5c", "#c9c9c9", "#f0f0f0", "#111111", "#e2e2e2"] },
+  noir:     { name: "Noir",      dark: true, sw: ["#16130f", "#e0a24f", "#efe8d8"],
+              t: ["#14120e", "#1f1c15", "#efe8d8", "#b3a88f", "#877c66", "#332f26", "#1b1813", "#e0a24f", "#3a2f1c"] },
+  midnight: { name: "Midnight",  dark: true, sw: ["#0e1420", "#35c2d1", "#dfe8f2"],
+              t: ["#0e1420", "#16202e", "#dfe8f2", "#94a6bb", "#6d8098", "#26303f", "#131b27", "#35c2d1", "#123038"] },
+  forest:   { name: "Forest",    dark: true, sw: ["#10160f", "#6fbf6a", "#e2ead9"],
+              t: ["#10160f", "#182018", "#e2ead9", "#9db298", "#748a6f", "#2a352a", "#141c14", "#6fbf6a", "#1e2e1c"] },
+  ink:      { name: "Ink",       dark: true, sw: ["#0c0c0d", "#d64f3a", "#ececec"],
+              t: ["#0c0c0d", "#161617", "#ececec", "#a8a8ab", "#79797d", "#2a2a2c", "#141416", "#d64f3a", "#37211d"] }
+};
+function applyPalette(id) {
+  const p = PALETTES[id] || PALETTES.auto;
+  const root = document.documentElement;
+  if (!p.t) {
+    TOKENS.forEach(k => root.style.removeProperty("--" + k));
+    root.removeAttribute("data-theme");
+  } else {
+    TOKENS.forEach((k, i) => root.style.setProperty("--" + k, p.t[i]));
+    root.setAttribute("data-theme", p.dark ? "dark" : "light");
+  }
+  try { localStorage.setItem("noxel.palette", id); } catch (e) {}
+  currentPalette = id;
+}
+let currentPalette = "auto";
+(function initPalette() {
+  let id = "auto";
+  try { id = localStorage.getItem("noxel.palette") || "auto"; } catch (e) {}
+  // migrate the old light/dark toggle
+  if (id === "auto") {
+    try {
+      const legacy = localStorage.getItem("noxel.theme");
+      if (legacy === "dark") id = "noir";
+      else if (legacy === "light") id = "paper";
+    } catch (e) {}
+  }
+  if (!PALETTES[id]) id = "auto";
+  applyPalette(id);
 })();
-$("#themeBtn").addEventListener("click", () => {
-  const cur = document.documentElement.dataset.theme
-    || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-  const next = cur === "dark" ? "light" : "dark";
-  document.documentElement.dataset.theme = next;
-  try { localStorage.setItem("noxel.theme", next); } catch (e) {}
-});
 
-$("#helpBtn").addEventListener("click", () => {
+$("#themeBtn").addEventListener("click", openAppearance);
+function openAppearance() {
+  const m = $("#modal");
+  m.classList.add("wide");
+  m.innerHTML =
+    '<h3>Appearance</h3>' +
+    '<label style="margin-top:4px">Colour scheme</label>' +
+    '<div class="pal-grid" id="palGrid"></div>' +
+    '<label style="margin-top:20px">Editor text size</label>' +
+    '<div class="size-row">' +
+      '<button class="tbtn" id="szDown">A&minus;</button>' +
+      '<span id="szNow" style="font-family:var(--mono);font-size:13px;color:var(--muted);min-width:52px;text-align:center"></span>' +
+      '<button class="tbtn" id="szUp">A+</button>' +
+      '<span style="font-family:var(--script);font-size:var(--script-size);margin-left:10px">The quick brown fox</span>' +
+    '</div>' +
+    '<div class="row"><button class="tbtn primary" id="apDone">Done</button></div>';
+  const grid = $("#palGrid");
+  Object.keys(PALETTES).forEach(id => {
+    const p = PALETTES[id];
+    const b = el("button", "pal" + (id === currentPalette ? " on" : ""));
+    b.type = "button";
+    b.innerHTML =
+      '<span class="pal-prev" style="background:' + p.sw[0] + '">' +
+        '<span style="color:' + p.sw[2] + '">Aa</span>' +
+        '<i style="background:' + p.sw[1] + '"></i>' +
+      '</span>' +
+      '<span class="pal-name">' + p.name + '</span>';
+    b.onclick = () => {
+      applyPalette(id);
+      [...grid.children].forEach(c => c.classList.remove("on"));
+      b.classList.add("on");
+    };
+    grid.appendChild(b);
+  });
+  const showSz = () => { $("#szNow").textContent = curZoom() + " px"; };
+  showSz();
+  $("#szDown").onclick = () => { setZoom(curZoom() - 1); showSz(); };
+  $("#szUp").onclick = () => { setZoom(curZoom() + 1); showSz(); };
+  $("#apDone").onclick = closeModal;
+  scrim.classList.add("open");
+}
+
+$("#helpBtn").addEventListener("click", openHelp);
+$("#helpBtn2").addEventListener("click", openHelp);
+function openHelp() {
   const m = $("#modal");
   m.classList.add("wide");
   m.innerHTML = `
@@ -583,7 +664,7 @@ $("#helpBtn").addEventListener("click", () => {
     <div class="row"><button class="tbtn primary" id="helpClose">Got it</button></div>`;
   $("#helpClose").onclick = closeModal;
   scrim.classList.add("open");
-});
+}
 
 $("#titleBtn").addEventListener("click", () => {
   $("#modal").classList.remove("wide");
