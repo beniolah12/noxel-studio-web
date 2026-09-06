@@ -251,6 +251,40 @@ async function checkFreshBuild() {
     }
   });
 
+  // Re-check the cloud when the tab regains focus. Realtime UPDATEs that
+  // arrived while we were blurred or mid-edit get dropped (never clobber a
+  // live edit) — this pulls in anything we missed, e.g. content pushed by
+  // the Claude connector, the moment the writer comes back to the tab.
+  let refocusT = null;
+  async function resyncFromCloud(reason) {
+    if (saving || pendingLocal || !api) return;
+    const ae = document.activeElement;
+    if (ae && (ae.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(ae.tagName))) return;
+    let fresh;
+    try { fresh = await loadProject(pid); } catch (e) { return; }
+    if (!fresh || !fresh.data) return;
+    const s = sig(fresh.data);
+    if (s === lastSig) return;
+    lastSig = s;
+    comments = Array.isArray(fresh.data._comments) ? fresh.data._comments : comments;
+    const mode = document.body.dataset.mode;
+    const mn = document.getElementById("main");
+    const scrollY = mn ? mn.scrollTop : 0;
+    settled = false;
+    api.reload({ projects: [fresh.data], currentId: fresh.data.id });
+    api.setComments(comments);
+    api.setPeers(lastPeers);
+    if (mode && mode !== "write") { const mb = document.getElementById("mode-" + mode); if (mb) mb.click(); }
+    if (mn) mn.scrollTop = scrollY;
+    pendingLocal = false;
+    cloud(reason || "Updated");
+    setTimeout(() => { settled = true; cloud("Synced"); }, 1400);
+  }
+  window.addEventListener("focus", () => { clearTimeout(refocusT); refocusT = setTimeout(() => resyncFromCloud("Updated"), 150); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") { clearTimeout(refocusT); refocusT = setTimeout(() => resyncFromCloud("Updated"), 150); }
+  });
+
   if (!myName) myName = "Guest " + Math.floor(Math.random() * 90 + 10);
   const me = { id: tabPeerId, name: myName, color: myColor };
   pres = joinPresence(pid, me, (peers) => {

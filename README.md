@@ -21,6 +21,25 @@ no email, no passwords.
 
 The Vercel env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) are already set.
 
+## Connect Claude (MCP connector)
+
+`api/mcp.js` is a small [Model Context Protocol](https://modelcontextprotocol.io)
+server so Claude can read and write your scripts from a chat.
+
+1. In Claude → **Settings → Connectors → Add custom connector**.
+2. URL: `https://noxel-web.vercel.app/api/mcp?key=<NOXEL_MCP_TOKEN>`
+   (the token is the Vercel env var `NOXEL_MCP_TOKEN`; drop `?key=…` if it's unset).
+3. In any chat, ask Claude to *"create a Noxel script…"* or paste a share link and
+   *"add a scene to this"*.
+
+Tools: `create_script`, `get_script`, `append_scenes`, `replace_script`,
+`set_title`, `add_note`. Content is [Fountain](https://fountain.io) by default
+(`format: "action"` turns plain paragraphs into action lines).
+
+Writes land straight in the Supabase row, so an open editor tab picks them up
+live (or on next focus). Claude's edit can be lost if you're typing in the same
+script at that exact moment — last write wins.
+
 ## Local dev
 
 ```sh
@@ -36,6 +55,8 @@ npm install && npm run dev
 | `public/app.js` | the editor logic, verbatim from the artifact's `<script>` |
 | `src/adapter.js` | wires `app.js` to Supabase via the `window.NoxelHost` bridge |
 | `src/supabase.js` | `loadProject` / `createProject` / `saveProject` / `subscribeProject` / `joinPresence` |
+| `api/db.js` | same-origin REST proxy to Supabase (defeats ad-blockers / filters) |
+| `api/mcp.js` | MCP server — lets Claude create/read/edit scripts as a connector |
 | `supabase/schema.sql` | the one `projects` table + open RLS + realtime |
 
 `public/app.js` is a copy — if you change the editor in the artifact, re-copy
