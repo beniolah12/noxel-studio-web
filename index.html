@@ -390,6 +390,29 @@
     color: var(--faint);
     pointer-events: none;
   }
+
+  /* A4 page break — makes the sheet read as separate stacked pages */
+  .pgbreak {
+    margin: 20px -72px;
+    height: 44px;
+    background: var(--paper);
+    box-shadow: inset 0 1px 0 var(--rule), inset 0 -1px 0 var(--rule);
+    position: relative;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  .pgbreak::after {
+    content: "PAGE " attr(data-n);
+    position: absolute; right: 76px; top: 50%; transform: translateY(-50%);
+    font-family: var(--mono); font-size: 10px; letter-spacing: .16em; color: var(--faint);
+  }
+  .pgbreak::before {
+    content: ""; position: absolute; left: 76px; top: 50%; transform: translateY(-50%);
+    width: 22px; height: 1px; background: var(--faint);
+  }
+  .pgbreak + .block { margin-top: 4px; }
+  @media (max-width: 720px) { .pgbreak { margin-left: -26px; margin-right: -26px; }
+    .pgbreak::after { right: 30px; } .pgbreak::before { left: 30px; } }
   .block[data-type="scene"].empty::before { content: "INT./EXT. LOCATION - DAY"; }
   .block[data-type="character"].empty::before { content: "CHARACTER"; }
   .block[data-type="transition"].empty::before { content: "CUT TO:"; }
@@ -765,9 +788,9 @@
 
   /* ---------- print / PDF ---------- */
   @media print {
-    @page { size: letter; margin: 1in 1in 1in 1.5in; }
+    @page { size: A4; margin: 2.54cm 2.54cm 2.54cm 3.8cm; }
     body { background: #fff; color: #000; }
-    .topbar, .nav, .foot, .typetag, .scrim, #breakdown, #shots, #schedule, #budget, #cursorLayer { display: none !important; }
+    .topbar, .nav, .foot, .typetag, .scrim, .fmtbar, .welcome, #breakdown, #shots, #schedule, #budget, #cursorLayer, .pgbreak { display: none !important; }
     .app { display: block; height: auto; }
     .main { overflow: visible; padding: 0; }
     body.printing-cs { }

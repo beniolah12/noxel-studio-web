@@ -5,7 +5,7 @@ const LABEL = { scene: "Scene Heading", action: "Action", character: "Character"
 const UPPER = { scene: 1, character: 1, transition: 1 };
 // what a fresh line becomes when you press Enter from a given type
 const AFTER = { scene: "action", action: "action", character: "dialogue", dialogue: "action", paren: "dialogue", transition: "scene" };
-const LINES_PER_PAGE = 55;
+const LINES_PER_PAGE = 56;   /* ~one A4 page of 12pt Courier */
 const CATS = [
   { key: "cast", label: "Cast" },
   { key: "extras", label: "Background / Extras" },
@@ -127,7 +127,33 @@ function renderScript() {
   syncStats();
   renderScenes();
   updateWelcome();
+  paginate();
   if (typeof renderScriptPeers === "function") renderScriptPeers();
+}
+
+/* split the script into A4-page chunks with a visible break between them */
+let pageTimer = null;
+function schedulePaginate() { clearTimeout(pageTimer); pageTimer = setTimeout(paginate, 350); }
+function paginate() {
+  scriptEl.querySelectorAll(":scope > .pgbreak").forEach(n => n.remove());
+  const blocks = blockNodes();
+  if (!blocks.length) return;
+  let line = 0, page = 1;
+  blocks.forEach(node => {
+    const b = { type: node.dataset.type, text: node.textContent };
+    const rows = estRows(b);
+    if (line > 0 && line + rows > LINES_PER_PAGE) {
+      const sep = el("div", "pgbreak");
+      sep.contentEditable = "false";
+      page++;
+      sep.dataset.n = page;
+      node.before(sep);
+      line = 0;
+    }
+    line += rows;
+  });
+  const st = $("#stPages");
+  if (st) st.textContent = page;
 }
 
 /* welcome / empty state -------------------------------------------------- */
@@ -164,7 +190,7 @@ function updateWelcome() {
   };
 }
 
-function blockNodes() { return [...scriptEl.children]; }
+function blockNodes() { return [...scriptEl.querySelectorAll(":scope > .block")]; }
 function indexOf(node) { return blockNodes().indexOf(node); }
 
 function syncFromDom() {
@@ -182,6 +208,7 @@ function setType(node, type) {
   save();
   syncStats();
   renderScenes();
+  schedulePaginate();
 }
 
 function toggleEmpty(node) { node.classList.toggle("empty", node.textContent.length === 0); }
@@ -224,6 +251,7 @@ scriptEl.addEventListener("input", e => {
   save();
   syncStats();
   scheduleScenes();
+  schedulePaginate();
   if (live.peers && live.peers.length) renderScriptPeers();
   updateAC(node);
 });
@@ -260,6 +288,7 @@ scriptEl.addEventListener("keydown", e => {
     save();
     syncStats();
     renderScenes();
+    schedulePaginate();
     return;
   }
 
@@ -272,6 +301,7 @@ scriptEl.addEventListener("keydown", e => {
     save();
     syncStats();
     renderScenes();
+    schedulePaginate();
     return;
   }
 
@@ -1819,7 +1849,7 @@ function setMode(mode) {
   else if (mode === "shots") renderShots();
   else if (mode === "schedule") renderSchedule();
   else if (mode === "budget") renderBudget();
-  else { syncStats(); updateWelcome(); const ab = blockNodes()[0]; updateFmtbar(ab ? ab.dataset.type : "scene"); }
+  else { syncStats(); updateWelcome(); paginate(); const ab = blockNodes()[0]; updateFmtbar(ab ? ab.dataset.type : "scene"); }
   renderScriptPeers();
   $("#main").scrollTop = 0;
   pushPresence();
