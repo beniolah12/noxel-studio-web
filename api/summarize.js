@@ -53,7 +53,7 @@ function outline(ft) {
     if (/^\(.*\)$/.test(t)) { prevCue = true; continue; }
     if (/^>/.test(t) || /\bTO:$/.test(t)) { prevCue = false; continue; }
     if (cur && !cur.beat && !prevCue && /[a-z]/.test(t)) {
-      cur.beat = t.split(/(?<=[.!?])\s/)[0].slice(0, 160);
+      cur.beat = t.length > 180 ? t.slice(0, 177).replace(/\s+\S*$/, "") + "…" : t;
     }
     prevCue = false;
   }
