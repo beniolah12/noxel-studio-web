@@ -170,8 +170,10 @@ function updateWelcome() {
     '<p>Click the page below and type a <b>scene heading</b> — where and when the scene happens, like <span class="eg">INT. Coffee shop - Day</span>. ' +
     'Then press <b>Enter</b> and keep going: describe what happens, add a <b>character</b> name, their <b>dialogue</b>. ' +
     'The buttons at the top (or the <b>Tab</b> key) switch between line types. Everything saves automatically.</p>' +
+    '<p style="margin-bottom:10px">Already have something written? <b>Drag a file onto this page</b>, or paste your text straight in — Noxel formats it for you.</p>' +
     '<div class="row">' +
     '<button id="wStart">Start with a blank page</button>' +
+    '<button class="ghost" id="wImport">Import a file or text</button>' +
     '<button class="ghost" id="wSample">Load a short example</button>' +
     '</div>';
   $("#wStart").onclick = () => {
@@ -179,6 +181,7 @@ function updateWelcome() {
     const n = blockNodes()[0];
     if (n) placeCaret(n, false);
   };
+  $("#wImport").onclick = () => openImport();
   $("#wSample").onclick = () => {
     const s = sample();
     cur.blocks = s.blocks.map(b => ({ id: uid(), type: b.type, text: b.text }));
@@ -333,9 +336,35 @@ scriptEl.addEventListener("focusin", e => {
   }
 });
 scriptEl.addEventListener("paste", e => {
+  const text = ((e.clipboardData || window.clipboardData).getData("text/plain") || "").replace(/\r/g, "");
+  // A whole scene / outline / script? Parse it into proper lines instead of
+  // dumping raw text into one block.
+  const structured = /\n[ \t]*\n/.test(text)
+    || /^(INT|EXT|EST|I\/E|INT\.?\/EXT)[. ]/im.test(text)
+    || ((text.match(/\n/g) || []).length >= 3 && /\n[A-Z][A-Z0-9 .'\-]{1,26}\n/.test(text));
+  if (!structured) {
+    e.preventDefault();
+    document.execCommand("insertText", false, text);
+    return;
+  }
+  const parsed = (typeof impParse === "function") ? impParse(text, "", "auto") : null;
+  if (!parsed || !parsed.blocks || !parsed.blocks.length) {
+    e.preventDefault();
+    document.execCommand("insertText", false, text);
+    return;
+  }
   e.preventDefault();
-  const text = (e.clipboardData || window.clipboardData).getData("text/plain");
-  document.execCommand("insertText", false, text.replace(/\r/g, ""));
+  const node = activeBlock() || blockNodes()[blockNodes().length - 1];
+  syncFromDom();
+  let at = node ? indexOf(node) + 1 : cur.blocks.length;
+  if (node && !node.textContent.trim()) { at = indexOf(node); cur.blocks.splice(at, 1); }
+  const fresh = parsed.blocks.map(b => ({ id: uid(), type: b.type, text: b.text }));
+  cur.blocks.splice(at, 0, ...fresh);
+  renderScript(); save(true);
+  const nodes = blockNodes();
+  const target = nodes[Math.min(at + fresh.length - 1, nodes.length - 1)];
+  if (target) { target.scrollIntoView({ block: "center" }); placeCaret(target, true); }
+  flashToast("Pasted and formatted — " + fresh.length + " lines");
 });
 
 /* ---------------- formatting toolbar ---------------- */
@@ -732,11 +761,10 @@ $("#dataBtn").addEventListener("click", () => {
       <button class="tbtn" id="mCopy">Copy JSON</button>
       <button class="tbtn" id="mRestore">Restore from paste</button>
     </div>
-    <label style="margin-top:18px">Fountain — the current script "<span id="mFT"></span>"</label>
-    <textarea id="mFountain" spellcheck="false" placeholder="Paste .fountain text here to import as a new script"></textarea>
-    <div class="row" style="margin-top:10px">
+    <label style="margin-top:18px">This script "<span id="mFT"></span>" &mdash; export</label>
+    <div class="row" style="margin-top:6px; justify-content:flex-start; flex-wrap:wrap">
       <button class="tbtn" id="mFExport">Copy as Fountain</button>
-      <button class="tbtn" id="mFImport">Import Fountain</button>
+      <button class="tbtn" id="mImportOpen">&#8682; Import a file or text&hellip;</button>
       <button class="tbtn primary" id="mClose">Done</button>
     </div>
     <div class="msg" id="mMsg"></div>`;
@@ -766,21 +794,9 @@ $("#dataBtn").addEventListener("click", () => {
   $("#mFExport").onclick = async () => {
     const ft = fountainExport();
     try { await navigator.clipboard.writeText(ft); $("#mMsg").textContent = "Fountain copied — paste into any screenwriting app."; }
-    catch (e) { $("#mFountain").value = ft; $("#mFountain").select(); $("#mMsg").textContent = "Select-all + copy the Fountain text above."; }
+    catch (e) { $("#mJson").value = ft; $("#mJson").select(); $("#mMsg").textContent = "Copy failed — Fountain text is in the box above; press Cmd/Ctrl+C."; }
   };
-  $("#mFImport").onclick = () => {
-    const r = fountainImport($("#mFountain").value);
-    if (!r) { $("#mMsg").textContent = "Couldn't read that as Fountain."; return; }
-    const p = {
-      id: uid(),
-      title: (r.meta.title || "IMPORTED SCRIPT").toUpperCase(),
-      author: ((r.meta.credit || "Written by") + "\n" + (r.meta.author || r.meta.authors || "")).trim(),
-      contact: r.meta.contact || "", updated: Date.now(), blocks: r.blocks,
-      breakdown: null, shots: {}, days: [], dayOf: {}, callsheets: {}, budget: []
-    };
-    data.projects.push(p); cur = p; save(true); boot(); closeModal();
-    flashToast("Imported " + r.blocks.length + " elements");
-  };
+  $("#mImportOpen").onclick = () => { closeModal(); openImport(); };
   scrim.classList.add("open");
   setTimeout(() => $("#mName").focus(), 30);
 });
@@ -1648,6 +1664,238 @@ function fountainImport(text) {
   }
   return blocks.length ? { meta, blocks } : null;
 }
+
+/* ================= IMPORT: files & pasted text ================= */
+function impStripMd(s) {
+  return String(s)
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s{0,3}>\s?/gm, "")
+    .replace(/\*\*(.+?)\*\*/g, "$1").replace(/__(.+?)__/g, "$1")
+    .replace(/\*(.+?)\*/g, "$1").replace(/_(.+?)_/g, "$1")
+    .replace(/^\s*[-*+]\s+/gm, "");
+}
+function impLooksLikeScreenplay(t) {
+  return /^(INT|EXT|EST|I\/E|INT\.?\/EXT)[. ]/im.test(t)
+    || /^(FADE IN|FADE OUT|FADE TO|CUT TO|SMASH CUT|DISSOLVE)/im.test(t)
+    || /\n[ \t]*[A-Z][A-Z0-9 .'\-]{1,26}\n[ \t]*\S/.test(t);
+}
+function impParsePlain(text) {
+  const blocks = [];
+  String(text).replace(/\r\n?/g, "\n").split(/\n\s*\n/).forEach(para => {
+    const t = para.replace(/[ \t]*\n[ \t]*/g, " ").trim();
+    if (!t) return;
+    if (/^(INT|EXT|EST|I\/E|INT\.?\/EXT)[. ]/i.test(t)) blocks.push({ type: "scene", text: t.toUpperCase() });
+    else if (/^(FADE (IN|OUT|TO)|CUT TO|SMASH CUT|DISSOLVE (TO)?)\b/i.test(t) && t.length < 26) blocks.push({ type: "transition", text: t.toUpperCase() });
+    else blocks.push({ type: "action", text: t });
+  });
+  return blocks.length ? { meta: {}, blocks } : null;
+}
+function impParseFdx(xml) {
+  let doc;
+  try { doc = new DOMParser().parseFromString(xml, "application/xml"); } catch (e) { return null; }
+  if (!doc || doc.getElementsByTagName("parsererror").length) return null;
+  const paras = doc.getElementsByTagName("Paragraph");
+  if (!paras.length) return null;
+  const MAP = {
+    "Scene Heading": "scene", "Action": "action", "Character": "character",
+    "Dialogue": "dialogue", "Parenthetical": "paren", "Transition": "transition",
+    "Shot": "action", "General": "action"
+  };
+  const blocks = [];
+  for (const p of paras) {
+    const type = MAP[p.getAttribute("Type")] || "action";
+    let text = Array.from(p.getElementsByTagName("Text")).map(n => n.textContent).join("").replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    if (UPPER[type]) text = text.toUpperCase();
+    blocks.push({ type, text });
+  }
+  const meta = {};
+  const tp = doc.getElementsByTagName("TitlePage")[0];
+  if (tp) {
+    const first = Array.from(tp.getElementsByTagName("Text")).map(n => n.textContent.trim()).filter(Boolean)[0];
+    if (first) meta.title = first;
+  }
+  return blocks.length ? { meta, blocks } : null;
+}
+// -> { kind, blocks, meta } | { kind:"json", library } | null
+function impParse(text, name, mode) {
+  name = (name || "").toLowerCase();
+  const t = (text || "").trim();
+  if (!t) return null;
+  if (name.endsWith(".json") || (t[0] === "{" && /"projects"\s*:/.test(t))) {
+    try {
+      const d = JSON.parse(t);
+      if (d && Array.isArray(d.projects) && d.projects.length) return { kind: "json", library: d };
+    } catch (e) {}
+  }
+  if (name.endsWith(".fdx") || /<FinalDraft[\s>]/.test(t) || /<Paragraph\b[^>]*\bType=/.test(t)) {
+    const r = impParseFdx(t);
+    if (r) return { kind: "fdx", blocks: r.blocks, meta: r.meta };
+  }
+  let src = text;
+  if (name.endsWith(".md") || name.endsWith(".markdown") || /^#{1,6}\s/m.test(src)) src = impStripMd(src);
+  let r;
+  if (mode === "plain") { r = impParsePlain(src); return r && { kind: "plain", blocks: r.blocks, meta: r.meta }; }
+  if (mode === "screenplay") { r = fountainImport(src); return r && { kind: "screenplay", blocks: r.blocks, meta: r.meta }; }
+  if (impLooksLikeScreenplay(src)) { r = fountainImport(src); if (r) return { kind: "screenplay", blocks: r.blocks, meta: r.meta }; }
+  r = impParsePlain(src);
+  return r && { kind: "plain", blocks: r.blocks, meta: r.meta };
+}
+function impSummary(p) {
+  if (!p) return "Nothing to import yet — choose a file or paste some text.";
+  if (p.kind === "json") return "Noxel backup with <b>" + p.library.projects.length + " script(s)</b>. Importing replaces your whole library.";
+  const c = {};
+  p.blocks.forEach(b => { c[b.type] = (c[b.type] || 0) + 1; });
+  const rows = p.blocks.reduce((n, b) => n + estRows(b), 0);
+  const pages = Math.max(1, Math.round(rows / LINES_PER_PAGE));
+  const label = p.kind === "fdx" ? "Final Draft" : p.kind === "screenplay" ? "Screenplay" : "Plain text";
+  const bits = [];
+  if (c.scene) bits.push("<b>" + c.scene + "</b> scene" + (c.scene > 1 ? "s" : ""));
+  if (c.dialogue) bits.push("<b>" + c.dialogue + "</b> dialogue");
+  if (c.action) bits.push("<b>" + c.action + "</b> action");
+  return label + " &mdash; " + (bits.join(" &middot; ") || ("<b>" + p.blocks.length + "</b> lines")) +
+    " &middot; about <b>" + pages + "</b> page" + (pages > 1 ? "s" : "");
+}
+function readImportFile(file, cb) {
+  if (!file) return;
+  if (file.size > 4 * 1024 * 1024) { flashToast("That file is too big (max 4 MB)"); return; }
+  const fr = new FileReader();
+  fr.onload = () => cb(String(fr.result || ""), file.name || "");
+  fr.onerror = () => flashToast("Couldn't read that file");
+  fr.readAsText(file);
+}
+function applyImport(parsed, where) {
+  const meta = parsed.meta || {};
+  const fresh = parsed.blocks.map(b => ({ id: uid(), type: b.type, text: b.text }));
+  if (where === "new") {
+    const p = {
+      id: uid(),
+      title: (meta.title || "IMPORTED SCRIPT").toUpperCase().slice(0, 120),
+      author: ((meta.credit || "Written by") + "\n" + (meta.author || meta.authors || "")).trim(),
+      contact: meta.contact || "", updated: Date.now(), blocks: fresh,
+      breakdown: null, shots: {}, days: [], dayOf: {}, callsheets: {}, budget: [], stripOrder: {}
+    };
+    data.projects.push(p); cur = p; save(true); boot();
+    flashToast("Imported as a new script — " + fresh.length + " lines");
+    return;
+  }
+  syncFromDom();
+  if (where === "replace") {
+    cur.blocks = fresh;
+    if (meta.title && /^(untitled|imported script)?$/i.test((cur.title || "").trim())) {
+      cur.title = meta.title.toUpperCase(); renderTitle(); refreshProjSelect();
+    }
+  } else {
+    if (cur.blocks.length === 1 && !(cur.blocks[0].text || "").trim()) cur.blocks = [];
+    const startAt = cur.blocks.length;
+    cur.blocks = cur.blocks.concat(fresh);
+    cur._impStart = startAt;
+  }
+  if (document.body.dataset.mode !== "write") setMode("write");
+  renderScript(); save(true);
+  const nodes = blockNodes();
+  const idx = where === "replace" ? 0 : (cur._impStart || 0);
+  delete cur._impStart;
+  const target = nodes[Math.min(idx, nodes.length - 1)];
+  if (target) { target.scrollIntoView({ block: "center" }); placeCaret(target, false); }
+  flashToast("Imported " + fresh.length + " lines");
+}
+function openImport(prefill) {
+  closeMenu();
+  syncFromDom();
+  $("#modal").classList.remove("wide");
+  $("#modal").innerHTML =
+    '<h3>Import into Noxel</h3>' +
+    '<div class="imp-drop" id="impDrop"><b>Click to choose a file</b>' +
+    '<span>&hellip; or drag it anywhere onto the page &mdash; .fountain, .txt, .fdx, .md, .json</span></div>' +
+    '<input type="file" id="impFile" accept=".fountain,.txt,.text,.md,.markdown,.fdx,.json,text/plain" hidden>' +
+    '<div class="imp-or">OR PASTE TEXT</div>' +
+    '<textarea id="impText" spellcheck="false" placeholder="Paste a screenplay, an outline, or plain notes…" style="min-height:110px"></textarea>' +
+    '<label style="margin-top:14px">Read it as</label>' +
+    '<select id="impMode" class="proj-select" style="width:100%">' +
+    '<option value="auto">Auto-detect (recommended)</option>' +
+    '<option value="screenplay">Screenplay &mdash; Fountain / Final Draft</option>' +
+    '<option value="plain">Plain text &mdash; each paragraph becomes Action</option></select>' +
+    '<label style="margin-top:14px">Where does it go</label>' +
+    '<div class="imp-where" id="impWhere">' +
+    '<label><input type="radio" name="impWhere" value="end" checked> <span>Add to the end of this script <span class="sub">&mdash; keeps everything you already wrote</span></span></label>' +
+    '<label><input type="radio" name="impWhere" value="replace"> <span>Replace this script</span></label>' +
+    '<label id="impNewOpt"><input type="radio" name="impWhere" value="new"> <span>Import as a new script</span></label>' +
+    '</div>' +
+    '<div class="imp-summary" id="impSummary"></div>' +
+    '<div class="row"><button class="tbtn" id="impCancel">Cancel</button>' +
+    '<button class="tbtn primary" id="impGo" disabled>Import</button></div>' +
+    '<div class="msg" id="impMsg"></div>';
+
+  if (HOST) { const o = $("#impNewOpt"); if (o) o.remove(); }
+
+  const ta = $("#impText"), modeSel = $("#impMode"), summ = $("#impSummary"), go = $("#impGo");
+  let fileName = "";
+  const cur1 = () => impParse(ta.value, fileName, modeSel.value);
+  function refresh() {
+    const p = cur1();
+    summ.innerHTML = impSummary(p);
+    go.disabled = !p;
+    go.textContent = p && p.kind === "json" ? "Restore library" : "Import";
+    if (p && p.kind === "json") $("#impWhere").style.display = "none";
+    else $("#impWhere").style.display = "";
+  }
+  ta.addEventListener("input", () => { fileName = ""; refresh(); });
+  modeSel.addEventListener("change", refresh);
+
+  const fi = $("#impFile"), dz = $("#impDrop");
+  dz.onclick = () => fi.click();
+  fi.onchange = () => readImportFile(fi.files[0], (txt, nm) => { ta.value = txt; fileName = nm; refresh(); });
+  ["dragenter", "dragover"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); dz.classList.add("hot"); }));
+  ["dragleave", "drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); dz.classList.remove("hot"); }));
+  dz.addEventListener("drop", e => { readImportFile(e.dataTransfer.files[0], (txt, nm) => { ta.value = txt; fileName = nm; refresh(); }); });
+
+  $("#impCancel").onclick = closeModal;
+  go.onclick = () => {
+    const p = cur1();
+    if (!p) return;
+    if (p.kind === "json") {
+      if (!window.confirm("Replace your whole library with this backup? Your current scripts will be removed.")) return;
+      data = p.library;
+      cur = data.projects.find(x => x.id === data.currentId) || data.projects[0];
+      save(true); boot(); closeModal(); flashToast("Library restored");
+      return;
+    }
+    const where = (document.querySelector('input[name="impWhere"]:checked') || {}).value || "end";
+    closeModal();
+    applyImport(p, where);
+  };
+
+  if (prefill && prefill.text) { ta.value = prefill.text; fileName = prefill.name || ""; }
+  refresh();
+  scrim.classList.add("open");
+  setTimeout(() => (prefill && prefill.text ? go : ta).focus(), 30);
+}
+$("#importBtn").addEventListener("click", () => openImport());
+
+/* whole-window drag & drop -------------------------------------------------- */
+(function () {
+  const zone = $("#dropzone");
+  let hideT = null;
+  const hasFiles = e => e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], "Files") > -1;
+  window.addEventListener("dragover", e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    if (scrim.classList.contains("open")) return;   // the import modal handles its own drop
+    zone.hidden = false;
+    clearTimeout(hideT); hideT = setTimeout(() => { zone.hidden = true; }, 220);
+  });
+  window.addEventListener("dragleave", e => {
+    if (!e.relatedTarget && e.clientX <= 0 && e.clientY <= 0) { clearTimeout(hideT); zone.hidden = true; }
+  });
+  window.addEventListener("drop", e => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    clearTimeout(hideT); zone.hidden = true;
+    if (scrim.classList.contains("open")) return;
+    readImportFile(e.dataTransfer.files[0], (txt, nm) => openImport({ text: txt, name: nm }));
+  });
+})();
 
 /* ================= PRESENCE (room) ================= */
 const PCOLORS = ["#e0714f", "#4f9de0", "#63b463", "#c98bdb", "#d8a13a", "#3ec7c0"];
