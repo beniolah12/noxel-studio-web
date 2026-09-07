@@ -103,6 +103,12 @@ function renderTitle() {
   ci.oninput = () => { cur.contact = ci.value; save(); };
   c.appendChild(ci);
   tp.append(t, by, c);
+  if (cur.summary && cur.summary.logline) {
+    const lg = el("div", "tp-logline");
+    lg.textContent = cur.summary.logline;
+    lg.title = "Story summary — open it from the More menu";
+    tp.appendChild(lg);
+  }
 }
 
 /* ---------------- editor ---------------- */
@@ -1896,6 +1902,131 @@ $("#importBtn").addEventListener("click", () => openImport());
     readImportFile(e.dataTransfer.files[0], (txt, nm) => openImport({ text: txt, name: nm }));
   });
 })();
+
+/* ================= STORY SUMMARY ================= */
+const SUMMARY_MAX = 22000;
+const SUMMARY_PROMPT =
+  "You are a sharp script analyst. Below is a screenplay in Fountain format. " +
+  "Using ONLY what is actually written, reply in EXACTLY this shape and nothing else:\n\n" +
+  "LOGLINE: <one sentence, max 28 words — the hook of the story>\n" +
+  "SYNOPSIS: <3 to 5 sentences, present tense: the setup, what drives the story, and how it ends. " +
+  "No preamble. Do not write \"this screenplay\" or \"the story follows\".>\n\n" +
+  "If the script is only fragments or very short, give one or two plain sentences about what is there.\n\n" +
+  "--- SCREENPLAY ---\n";
+
+function parseSummaryShape(t) {
+  t = (t || "").trim();
+  let logline = "", synopsis = "";
+  const lm = t.match(/LOGLINE:\s*([\s\S]*?)(?:\n\s*SYNOPSIS:|$)/i);
+  const sm = t.match(/SYNOPSIS:\s*([\s\S]*)$/i);
+  if (lm) logline = lm[1].trim().replace(/\s+/g, " ");
+  if (sm) synopsis = sm[1].trim();
+  if (!logline && !synopsis) synopsis = t;
+  return { logline: logline, synopsis: synopsis };
+}
+
+async function runSummary(onPartial, signal) {
+  const ft = fountainExport();
+  let src = ft, truncated = false;
+  if (src.length > SUMMARY_MAX) { src = src.slice(0, SUMMARY_MAX); truncated = true; }
+  if (HOST && typeof HOST.summarize === "function") {
+    const r = await HOST.summarize(src);
+    return { logline: r.logline || "", synopsis: r.synopsis || "", engine: r.engine || "ai", truncated: truncated };
+  }
+  let sampler = null;
+  try { sampler = (typeof claude !== "undefined" && claude && claude.use) ? await claude.use("sample") : null; }
+  catch (e) { sampler = null; }
+  if (!sampler) { const e = new Error("no-ai"); e.code = "no-ai"; throw e; }
+  const res = await sampler(SUMMARY_PROMPT + src, {
+    modelTier: "default",
+    signal: signal,
+    onText: function (u) { if (onPartial) onPartial(parseSummaryShape(u.text)); }
+  });
+  const parsed = parseSummaryShape(res.text);
+  return { logline: parsed.logline, synopsis: parsed.synopsis, engine: "ai", truncated: truncated };
+}
+
+function sumEsc(x) { return String(x).replace(/[<>&]/g, function (c) { return { "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]; }); }
+
+function openSummary(force) {
+  closeMenu();
+  syncFromDom();
+  $("#modal").classList.remove("wide");
+  $("#modal").innerHTML =
+    '<h3>Story summary</h3>' +
+    '<p style="font-family:var(--ui);font-size:12.5px;color:var(--faint);margin:-6px 0 12px">A short synopsis written from what\'s in the script right now.</p>' +
+    '<div id="sumBody"></div>' +
+    '<div class="row" style="justify-content:flex-start;flex-wrap:wrap">' +
+    '<button class="tbtn" id="sumRegen" hidden>Write it again</button>' +
+    '<button class="tbtn" id="sumCopy" hidden>Copy</button>' +
+    '<button class="tbtn" id="sumStop" hidden>Stop</button>' +
+    '<button class="tbtn primary" id="sumClose">Close</button></div>' +
+    '<div class="msg" id="sumMsg"></div>';
+  const body = $("#sumBody");
+  $("#sumClose").onclick = closeModal;
+  scrim.classList.add("open");
+
+  function paint(s, thinking) {
+    body.innerHTML =
+      (s.logline ? '<p class="sum-log">' + sumEsc(s.logline) + "</p>" : "") +
+      (s.synopsis ? '<p class="sum-syn">' + sumEsc(s.synopsis) + "</p>"
+        : (thinking ? '<p class="sum-syn dim">Reading the script…</p>' : ""));
+  }
+
+  function start() {
+    $("#sumCopy").hidden = true; $("#sumRegen").hidden = true;
+    const ctl = ("AbortController" in window) ? new AbortController() : null;
+    let done = false;
+    paint({}, true);
+    $("#sumMsg").textContent = "";
+    $("#sumStop").hidden = !ctl;
+    $("#sumStop").onclick = function () { if (ctl) ctl.abort(); };
+    runSummary(function (partial) { if (!done) paint(partial, !partial.synopsis); }, ctl && ctl.signal)
+      .then(function (r) {
+        done = true; $("#sumStop").hidden = true;
+        if (!r.logline && !r.synopsis) { $("#sumMsg").textContent = "Couldn't produce a summary — try again."; return; }
+        cur.summary = { logline: r.logline, synopsis: r.synopsis, at: Date.now(), engine: r.engine };
+        save(true); paint(cur.summary, false); renderTitle();
+        $("#sumCopy").hidden = false; $("#sumRegen").hidden = false;
+        var note = "";
+        if (r.engine === "outline") note = "Basic outline — no AI connected on this version. ";
+        if (r.truncated) note += "Written from the first part of the script.";
+        $("#sumMsg").textContent = note;
+      })
+      .catch(function (err) {
+        done = true; $("#sumStop").hidden = true;
+        var code = err && err.code;
+        if (code === "cancelled" || (err && err.name === "AbortError")) { $("#sumMsg").textContent = "Stopped."; $("#sumRegen").hidden = false; return; }
+        if (code === "no-ai") {
+          body.innerHTML = '<p class="sum-syn dim">The written AI summary runs in the claude.ai version of Noxel, or on the web version once an Anthropic API key is connected. ' +
+            'Everything else here works the same.</p>';
+          return;
+        }
+        if (code === "not_granted") { $("#sumMsg").textContent = "AI access was declined for this page — reload to be asked again."; return; }
+        if (code === "rate_limited") { $("#sumMsg").textContent = "Too many requests just now — wait a minute, then try again."; $("#sumRegen").hidden = false; return; }
+        $("#sumMsg").textContent = "Summary failed: " + ((err && err.message) || "unknown") + ".";
+        $("#sumRegen").hidden = false;
+      });
+  }
+
+  $("#sumRegen").onclick = start;
+  $("#sumCopy").onclick = async function () {
+    const s = cur.summary || {};
+    const txt = ((s.logline ? "LOGLINE: " + s.logline + "\n\n" : "") + (s.synopsis || "")).trim();
+    try { await navigator.clipboard.writeText(txt); $("#sumMsg").textContent = "Copied to clipboard."; }
+    catch (e) { $("#sumMsg").textContent = "Copy failed — select the text and press Cmd/Ctrl+C."; }
+  };
+
+  if (cur.summary && cur.summary.logline && !force) {
+    paint(cur.summary, false);
+    $("#sumCopy").hidden = false; $("#sumRegen").hidden = false;
+    $("#sumMsg").textContent = "Saved " + new Date(cur.summary.at).toLocaleDateString() +
+      (cur.summary.engine === "outline" ? " · basic outline" : "");
+  } else {
+    start();
+  }
+}
+$("#summaryBtn").addEventListener("click", function () { openSummary(); });
 
 /* ================= PRESENCE (room) ================= */
 const PCOLORS = ["#e0714f", "#4f9de0", "#63b463", "#c98bdb", "#d8a13a", "#3ec7c0"];

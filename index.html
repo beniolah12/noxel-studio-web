@@ -570,6 +570,17 @@
   }
   .imp-summary b { color: var(--ink); }
 
+  /* ---- story summary ---- */
+  #sumBody { min-height: 62px; margin: 2px 0 4px; }
+  .sum-log { font-family: var(--ui); font-size: 16px; font-weight: 600; line-height: 1.45;
+    color: var(--ink); margin: 2px 0 12px; }
+  .sum-syn { font-family: var(--ui); font-size: 14px; line-height: 1.65; color: var(--muted); margin: 0; white-space: pre-wrap; }
+  .sum-syn.dim { color: var(--faint); font-style: italic; }
+  .tp-logline {
+    font-family: var(--ui); font-size: 12.5px; font-style: italic; color: var(--faint);
+    max-width: 46ch; margin: 16px auto 0; line-height: 1.5; text-align: center;
+  }
+
   @media (max-width: 640px) {
     .app { grid-template-columns: 1fr; grid-template-areas: "top" "fmt" "main" "foot"; }
     .nav { display: none; }
@@ -890,6 +901,7 @@
       <button class="tbtn" id="moreBtn" aria-haspopup="true" aria-expanded="false" title="More options">More &#9662;</button>
       <div class="menu" id="moreMenu" hidden>
         <div class="menu-sec">Script</div>
+        <button class="tbtn" id="summaryBtn"><span>&#10022;</span> Story summary</button>
         <button class="tbtn" id="importBtn"><span>&#8682;</span> Import file or text</button>
         <button class="tbtn" id="titleBtn"><span>&#9635;</span> Title page</button>
         <button class="tbtn" id="dataBtn"><span>&#8681;</span> Backup &amp; formats</button>

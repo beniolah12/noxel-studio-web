@@ -129,6 +129,17 @@ function bar() {
 window.NoxelHost = {
   initialLibrary: null,
   onSave() { scheduleSave(); },
+  async summarize(fountain) {
+    const r = await fetch("/api/summarize", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ fountain: String(fountain || "") })
+    });
+    let j = null;
+    try { j = await r.json(); } catch (e) {}
+    if (!r.ok || !j) throw new Error((j && j.error) || ("summary failed (" + r.status + ")"));
+    return j; // { engine, logline, synopsis }
+  },
   onComments(items) { comments = items || []; scheduleSave(); if (api) api.setComments(comments); },
   onPresence(state) { if (pres) pres.update(Object.assign({}, state, { name: myName, color: myColor })); },
   onName(n) { setMyName(n); },
